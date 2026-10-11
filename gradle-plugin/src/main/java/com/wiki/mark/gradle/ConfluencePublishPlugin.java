@@ -41,6 +41,8 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
                   task.getMermaidJson().convention(diagrams.getMermaidJson());
                   task.getPuppeteerJson().convention(diagrams.getPuppeteerJson());
                   task.getProjectDir().convention(project.getLayout().getProjectDirectory());
+                  task.getPathEnvironment()
+                      .convention(project.getProviders().environmentVariable("PATH"));
                   task.getOnlyDiagrams().convention(List.of());
                 });
 

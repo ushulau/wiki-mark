@@ -105,12 +105,7 @@ final class RenderSupport {
     return selected;
   }
 
-  /** True when {@code binary} resolves on the process {@code PATH}. */
-  static boolean onPath(String binary) {
-    return onPath(binary, System.getenv("PATH"));
-  }
-
-  /** Same, against an explicit path value so tests stay deterministic. */
+  /** True when {@code binary} resolves on the given {@code PATH} value. */
   static boolean onPath(String binary, String pathEnv) {
     if (pathEnv == null || pathEnv.isEmpty()) {
       return false;

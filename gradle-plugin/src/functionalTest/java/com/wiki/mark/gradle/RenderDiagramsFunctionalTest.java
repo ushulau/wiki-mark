@@ -138,6 +138,22 @@ class RenderDiagramsFunctionalTest {
   }
 
   @Test
+  void renderReusesConfigurationCache() throws Exception {
+    writeBuild("    convertToPng = true\n");
+    writeMmd("flow.mmd");
+    Path png = projectDir.resolve("documentation/wiki/diagrams/flow.png");
+    byte[] image = "fake-png-bytes".getBytes(StandardCharsets.UTF_8);
+    Files.write(png, image);
+    primeDiagram("flow", "png", image);
+
+    // Hashes primed: nothing renders, so no engine is needed on either run.
+    runner("confluenceRenderDiagrams", "--configuration-cache").build();
+    BuildResult reused = runner("confluenceRenderDiagrams", "--configuration-cache").build();
+
+    assertTrue(reused.getOutput().contains("Reusing configuration cache."), reused.getOutput());
+  }
+
+  @Test
   void missingOutputRequiresEngine() throws Exception {
     writeBuild("    convertToPng = true\n");
     writeMmd("flow.mmd");

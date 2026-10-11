@@ -49,6 +49,10 @@ public abstract class ConfluenceRenderDiagramsTask extends DefaultTask {
   @Internal
   public abstract DirectoryProperty getProjectDir();
 
+  /** Process {@code PATH}, wired from the environment so the lookup stays cache-compatible. */
+  @Internal
+  public abstract Property<String> getPathEnvironment();
+
   @InputFiles
   @PathSensitive(PathSensitivity.RELATIVE)
   public abstract ConfigurableFileCollection getMmdSources();
@@ -204,8 +208,8 @@ public abstract class ConfluenceRenderDiagramsTask extends DefaultTask {
     return count == 1 ? "" : "s";
   }
 
-  private static void ensureEngine(String engine) {
-    if (!RenderSupport.onPath(engine)) {
+  private void ensureEngine(String engine) {
+    if (!RenderSupport.onPath(engine, getPathEnvironment().getOrElse(""))) {
       throw new SyncException(RenderSupport.engineNotFoundMessage(engine));
     }
   }

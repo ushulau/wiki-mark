@@ -67,6 +67,18 @@ class PluginFunctionalTest {
   }
 
   @Test
+  void compileReusesConfigurationCache() throws Exception {
+    writeBuild("");
+    writePage(
+        "01-hello.md", "<!-- Space: DEMO -->\n<!-- Title: Hello -->\n\n# Hello\n\nBody text.\n");
+
+    runner("confluenceCompile", "--configuration-cache").build();
+    BuildResult reused = runner("confluenceCompile", "--configuration-cache").build();
+
+    assertTrue(reused.getOutput().contains("Reusing configuration cache."), reused.getOutput());
+  }
+
+  @Test
   void compileFailsOnInvalidHeaders() throws Exception {
     writeBuild("");
     writePage("01-broken.md", "<!-- Space: S -->\n<!-- Titel: T -->\n\nBody.\n");
