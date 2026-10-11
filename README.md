@@ -105,9 +105,9 @@ needs the token too (it resolves against the live wiki); `compile` never does.
 
 | Task | Purpose |
 |---|---|
-| `confluenceRenderDiagrams` | `.mmd` → images via a pinned mermaid-cli container. `--only=<name>` (repeatable, `.mmd` suffix optional) renders selected diagrams. |
-| `confluenceCompile` | Offline render check of all pages to `build/confluence/storage`. No network, no token. Joins `check` only when `verifyOnCheck = true`. |
-| `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` publishes only pages whose digest differs from the state file; `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
+| `confluenceRenderDiagrams` | `.mmd` → images via a pinned mermaid-cli container. Skips when up-to-date (sources, config, and the `--only` selection are all tracked). `--only=<name>` (repeatable, `.mmd` suffix optional) renders selected diagrams. |
+| `confluenceCompile` | Runs render first so images are fresh (a no-op unless conversion is enabled), then checks all pages offline to `build/confluence/storage`. No network, no token. Joins `check` only when `verifyOnCheck = true`. |
+| `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` (or `onlyChanged = true` in config) publishes only pages whose digest differs from the state file; `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
 | `confluenceResetState` | Deletes the change-tracking state (`.gradle/confluence-publish/state.properties`, which survives `clean`; a legacy `documentation/wiki/.published-hashes` is imported once). |
 
 ## Diagrams
@@ -129,6 +129,14 @@ confluence {
 
 Note: Confluence serves SVG attachments for download rather than inline, so
 PNG is the practical format for published pages; SVG is for external reuse.
+
+Change detection is per diagram: each render records
+`diagram/<name>.<format> = <inputHash>:<outputHash>` in the shared state file
+(`.gradle/confluence-publish/state.properties`, alongside the page digests). A
+diagram re-renders only when its `.mmd` or settings changed, or its output is
+missing or tampered with; everything else skips, and the run ends with a
+`rendered X images, Y up-to-date` summary. A deleted `.mmd` drops its keys on
+the next full run (`--only` runs never prune).
 
 Full block (defaults shown):
 
@@ -180,7 +188,8 @@ confluence {
   contentAppearance = 'full-width' // full-width | fixed | default
   // titleFromH1 / titleFromFilename (mutually exclusive), titleAppendHash,
   // dropH1, parents, parentsFromPath (+ Root), appendLabels, minorEdit,
-  // versionMessage, changesOnly, attachReferenced, continueOnError,
+  // versionMessage, changesOnly, onlyChanged (= --changed), attachReferenced,
+  // continueOnError,
   // verifyOnCheck, trustStore (+ Password), insecureSkipTlsVerify (testing only)
   diagrams {
     convertToPng = true

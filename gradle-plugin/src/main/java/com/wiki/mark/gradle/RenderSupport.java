@@ -4,17 +4,22 @@ import com.wiki.mark.sync.SyncException;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
  * Gradle-free helpers behind {@code confluenceRenderDiagrams}: validation, container argument
- * building, and diagram selection. Plain JDK so unit tests cover it without a Gradle runtime.
+ * building, diagram selection, and per-diagram render tracking. Plain JDK so unit tests cover it
+ * without a Gradle runtime.
  */
 final class RenderSupport {
   private RenderSupport() {}
@@ -173,6 +178,115 @@ final class RenderSupport {
     args.add("-s");
     args.add(Integer.toString(scale));
     return args;
+  }
+
+  /**
+   * State key for one rendered image: {@code diagram/<stem>.<format>}. Lives in the same state file
+   * as page digests; the prefix plus format suffix keeps it distinct from page keys.
+   */
+  static String stateKey(String stem, String format) {
+    return "diagram/" + stem + "." + format;
+  }
+
+  /**
+   * Input digest for one diagram: the {@code .mmd} bytes plus every setting that can affect the
+   * rendered output.
+   */
+  static String diagramDigest(
+      byte[] mmd,
+      String image,
+      String engine,
+      List<String> extraRunArgs,
+      String background,
+      int scale,
+      String mermaidJson,
+      String puppeteerJson) {
+    try {
+      MessageDigest sha = MessageDigest.getInstance("SHA-256");
+      sha.update(mmd);
+      sha.update((byte) 0);
+      for (String part :
+          List.of(
+              image,
+              engine,
+              String.join(" ", extraRunArgs),
+              background,
+              Integer.toString(scale),
+              mermaidJson,
+              puppeteerJson)) {
+        sha.update(part.getBytes(StandardCharsets.UTF_8));
+        sha.update((byte) 0);
+      }
+      return hex(sha.digest());
+    } catch (NoSuchAlgorithmException impossible) {
+      throw new IllegalStateException("SHA-256 missing from the JDK", impossible);
+    }
+  }
+
+  /** SHA-256 hex of bytes (output fingerprint). */
+  static String shaHex(byte[] bytes) {
+    try {
+      return hex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    } catch (NoSuchAlgorithmException impossible) {
+      throw new IllegalStateException("SHA-256 missing from the JDK", impossible);
+    }
+  }
+
+  private static String hex(byte[] digest) {
+    StringBuilder out = new StringBuilder(digest.length * 2);
+    for (byte b : digest) {
+      out.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+    }
+    return out.toString();
+  }
+
+  /**
+   * True when the diagram must render: no recorded state, a malformed record, changed inputs, a
+   * missing output, or output bytes that no longer match the recording. Fails open (renders) on any
+   * doubt or read error — a redundant render is harmless, a stale skip is not.
+   *
+   * @param recorded the {@code <inputHash>:<outputHash>} state value, or null when absent
+   */
+  static boolean needsRender(String recorded, String currentInputHash, Path output) {
+    if (recorded == null) {
+      return true;
+    }
+    String[] parts = recorded.split(":");
+    if (parts.length != 2) {
+      return true;
+    }
+    if (!parts[0].equals(currentInputHash)) {
+      return true;
+    }
+    byte[] bytes;
+    try {
+      bytes = Files.readAllBytes(output);
+    } catch (IOException e) {
+      return true;
+    }
+    return !parts[1].equals(shaHex(bytes));
+  }
+
+  /**
+   * Drops diagram keys whose {@code .mmd} source is gone. Call only on full runs: under {@code
+   * --only} the other diagrams are merely unselected, not removed. Page keys are never touched.
+   */
+  static void pruneRemovedDiagrams(Map<String, String> state, Path sourceDir) {
+    state
+        .keySet()
+        .removeIf(
+            key -> {
+              if (!key.startsWith("diagram/")) {
+                return false;
+              }
+              String rest = key.substring("diagram/".length());
+              int dot = rest.lastIndexOf('.');
+              if (dot < 0) {
+                return false;
+              }
+              String stem = rest.substring(0, dot);
+              return !Files.isRegularFile(sourceDir.resolve(stem + ".mmd"));
+            });
   }
 
   /** Actionable message when the engine binary is not on {@code PATH}. */

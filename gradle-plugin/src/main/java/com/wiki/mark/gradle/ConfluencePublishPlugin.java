@@ -28,6 +28,7 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
                   task.getConvertToPng().convention(diagrams.getConvertToPng());
                   task.getConvertToSvg().convention(diagrams.getConvertToSvg());
                   task.getSourceDir().convention(diagrams.getSourceDir());
+                  task.getOutputDir().convention(task.getSourceDir());
                   task.getMmdSources()
                       .from(
                           task.getSourceDir()
@@ -39,6 +40,7 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
                   task.getBackground().convention(diagrams.getBackground());
                   task.getMermaidJson().convention(diagrams.getMermaidJson());
                   task.getPuppeteerJson().convention(diagrams.getPuppeteerJson());
+                  task.getProjectDir().convention(project.getLayout().getProjectDirectory());
                   task.getOnlyDiagrams().convention(List.of());
                 });
 
@@ -49,6 +51,9 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
                 "confluenceCompile",
                 ConfluenceCompileTask.class,
                 task -> {
+                  // Images must be fresh before compile validates them (and Gradle
+                  // requires the edge: pagesDir input overlaps the render output).
+                  task.dependsOn(render);
                   task.getPagesDir().convention(extension.getPagesDir());
                   task.getPageIncludes().convention(extension.getPageIncludes());
                   task.getSpace().convention(extension.getSpace());
@@ -110,7 +115,7 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
               task.getAttachReferenced().convention(extension.getAttachReferenced());
               task.getContinueOnError().convention(extension.getContinueOnError());
               task.getPreview().convention(false);
-              task.getChanged().convention(false);
+              task.getChanged().convention(extension.getOnlyChanged());
               task.getOnlyFiles().convention(List.of());
             });
 
@@ -165,6 +170,7 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
     extension.getChangesOnly().convention(false);
     extension.getAttachReferenced().convention(false);
     extension.getContinueOnError().convention(false);
+    extension.getOnlyChanged().convention(false);
     extension.getVerifyOnCheck().convention(false);
     extension.getTrustStorePassword().convention("");
     extension.getInsecureSkipTlsVerify().convention(false);

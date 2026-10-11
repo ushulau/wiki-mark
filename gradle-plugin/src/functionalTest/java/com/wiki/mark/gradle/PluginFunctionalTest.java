@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.BuildTask;
 import org.gradle.testkit.runner.GradleRunner;
@@ -120,5 +122,43 @@ class PluginFunctionalTest {
 
     assertTask(result, ":confluenceResetState", TaskOutcome.SUCCESS);
     assertFalse(Files.exists(state), "state file deleted");
+  }
+
+  @Test
+  void onlyChangedSelectsFromState() throws Exception {
+    writeBuild("  baseUrl = 'https://wiki.example.invalid'\n  onlyChanged = true\n");
+    writePage("01-same.md", "<!-- Space: DEMO -->\n<!-- Title: Same -->\n\nSame.\n");
+    writePage("02-new.md", "<!-- Space: DEMO -->\n<!-- Title: New -->\n\nNew.\n");
+    primeState("01-same.md");
+
+    // .invalid never resolves, so the sync fails fast after printing the selection.
+    BuildResult result = runner("confluencePublish", "-Pconfluence.token=dummy").buildAndFail();
+
+    assertTrue(result.getOutput().contains("02-new.md"), result.getOutput());
+    assertFalse(result.getOutput().contains("01-same.md"), result.getOutput());
+  }
+
+  @Test
+  void changedOptionSelectsFromState() throws Exception {
+    writeBuild("  baseUrl = 'https://wiki.example.invalid'\n");
+    writePage("01-same.md", "<!-- Space: DEMO -->\n<!-- Title: Same -->\n\nSame.\n");
+    writePage("02-new.md", "<!-- Space: DEMO -->\n<!-- Title: New -->\n\nNew.\n");
+    primeState("01-same.md");
+
+    BuildResult result =
+        runner("confluencePublish", "--changed", "-Pconfluence.token=dummy").buildAndFail();
+
+    assertTrue(result.getOutput().contains("02-new.md"), result.getOutput());
+    assertFalse(result.getOutput().contains("01-same.md"), result.getOutput());
+  }
+
+  /** Writes digests for the given pages so changed-selection treats them as unchanged. */
+  private void primeState(String... relative) throws Exception {
+    Path pagesDir = projectDir.resolve("documentation/wiki");
+    Map<String, String> state = new LinkedHashMap<>();
+    for (String rel : relative) {
+      state.put(rel, SyncSupport.digestPage(pagesDir, pagesDir.resolve(rel)));
+    }
+    SyncSupport.saveState(SyncSupport.stateFile(projectDir), state);
   }
 }

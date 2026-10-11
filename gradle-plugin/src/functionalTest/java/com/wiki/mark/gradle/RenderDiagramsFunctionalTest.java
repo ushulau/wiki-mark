@@ -1,14 +1,17 @@
 package com.wiki.mark.gradle;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.gradle.testkit.runner.BuildResult;
 import org.gradle.testkit.runner.GradleRunner;
+import org.gradle.testkit.runner.TaskOutcome;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,6 +43,15 @@ class RenderDiagramsFunctionalTest {
         .withArguments(args);
   }
 
+  private GradleRunner runnerWithoutEngine(String... args) throws Exception {
+    Path emptyBin = Files.createDirectory(projectDir.resolve("empty-bin"));
+    return GradleRunner.create()
+        .withProjectDir(projectDir.toFile())
+        .withPluginClasspath()
+        .withEnvironment(Map.of("PATH", emptyBin.toString()))
+        .withArguments(args);
+  }
+
   @Test
   void conversionDisabledByDefault() throws Exception {
     writeBuild("");
@@ -60,15 +72,8 @@ class RenderDiagramsFunctionalTest {
   void missingEngineFailsActionably() throws Exception {
     writeBuild("    containerEngine = 'docker'\n    convertToPng = true\n");
     writeMmd("flow.mmd");
-    Path emptyBin = Files.createDirectory(projectDir.resolve("empty-bin"));
 
-    BuildResult result =
-        GradleRunner.create()
-            .withProjectDir(projectDir.toFile())
-            .withPluginClasspath()
-            .withEnvironment(Map.of("PATH", emptyBin.toString()))
-            .withArguments("confluenceRenderDiagrams")
-            .buildAndFail();
+    BuildResult result = runnerWithoutEngine("confluenceRenderDiagrams").buildAndFail();
 
     assertTrue(result.getOutput().contains("not found on PATH"), result.getOutput());
     assertTrue(result.getOutput().contains("-x confluenceRenderDiagrams"), result.getOutput());
@@ -78,15 +83,8 @@ class RenderDiagramsFunctionalTest {
   void svgConversionNeedsEngineToo() throws Exception {
     writeBuild("    containerEngine = 'docker'\n    convertToSvg = true\n");
     writeMmd("flow.mmd");
-    Path emptyBin = Files.createDirectory(projectDir.resolve("empty-bin"));
 
-    BuildResult result =
-        GradleRunner.create()
-            .withProjectDir(projectDir.toFile())
-            .withPluginClasspath()
-            .withEnvironment(Map.of("PATH", emptyBin.toString()))
-            .withArguments("confluenceRenderDiagrams")
-            .buildAndFail();
+    BuildResult result = runnerWithoutEngine("confluenceRenderDiagrams").buildAndFail();
 
     assertTrue(result.getOutput().contains("not found on PATH"), result.getOutput());
   }
@@ -108,5 +106,65 @@ class RenderDiagramsFunctionalTest {
     BuildResult result = runner("confluenceRenderDiagrams").build();
 
     assertTrue(result.getOutput().contains("no diagrams to render"), result.getOutput());
+  }
+
+  @Test
+  void skipsWhenUpToDate() throws Exception {
+    writeBuild("");
+    writeMmd("flow.mmd");
+
+    BuildResult first = runner("confluenceRenderDiagrams").build();
+    assertTrue(first.task(":confluenceRenderDiagrams").getOutcome() == TaskOutcome.SUCCESS);
+    BuildResult second = runner("confluenceRenderDiagrams").build();
+    assertTrue(
+        second.task(":confluenceRenderDiagrams").getOutcome() == TaskOutcome.UP_TO_DATE,
+        second.getOutput());
+  }
+
+  @Test
+  void skipsDiagramsWhenHashesMatch() throws Exception {
+    writeBuild("    convertToPng = true\n");
+    writeMmd("flow.mmd");
+    Path png = projectDir.resolve("documentation/wiki/diagrams/flow.png");
+    byte[] image = "fake-png-bytes".getBytes(StandardCharsets.UTF_8);
+    Files.write(png, image);
+    primeDiagram("flow", "png", image);
+
+    // No engine on PATH: success proves nothing needed rendering.
+    BuildResult result = runnerWithoutEngine("confluenceRenderDiagrams").build();
+
+    assertTrue(result.getOutput().contains("up-to-date, nothing to render"), result.getOutput());
+    assertEquals("fake-png-bytes", Files.readString(png, StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void missingOutputRequiresEngine() throws Exception {
+    writeBuild("    convertToPng = true\n");
+    writeMmd("flow.mmd");
+    primeDiagram("flow", "png", "fake-png-bytes".getBytes(StandardCharsets.UTF_8));
+    // NOTE: no flow.png on disk.
+
+    BuildResult result = runnerWithoutEngine("confluenceRenderDiagrams").buildAndFail();
+
+    assertTrue(result.getOutput().contains("not found on PATH"), result.getOutput());
+  }
+
+  /** Records a matching input/output hash pair so the diagram counts as rendered. */
+  private void primeDiagram(String stem, String format, byte[] output) throws Exception {
+    Path diagrams = projectDir.resolve("documentation/wiki/diagrams");
+    byte[] mmd = Files.readAllBytes(diagrams.resolve(stem + ".mmd"));
+    String input =
+        RenderSupport.diagramDigest(
+            mmd,
+            RenderSupport.DEFAULT_CONTAINER_IMAGE,
+            "docker",
+            RenderSupport.defaultExtraRunArgs("docker"),
+            "white",
+            2,
+            RenderSupport.MERMAID_JSON,
+            RenderSupport.PUPPETEER_JSON);
+    Map<String, String> state = new LinkedHashMap<>();
+    state.put(RenderSupport.stateKey(stem, format), input + ":" + RenderSupport.shaHex(output));
+    SyncSupport.saveState(SyncSupport.stateFile(projectDir), state);
   }
 }

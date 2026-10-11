@@ -8,7 +8,10 @@ import com.wiki.mark.sync.SyncException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -134,6 +137,57 @@ class RenderSupportTest {
     assertTrue(!RenderSupport.onPath("no-such-binary-xyz", dir.toString()));
     assertTrue(!RenderSupport.onPath("docker", ""));
     assertTrue(!RenderSupport.onPath("docker", null));
+  }
+
+  @Test
+  void diagramDigestCoversSourcesAndConfig() {
+    byte[] mmd = "flowchart".getBytes(StandardCharsets.UTF_8);
+    String base = digest(mmd, 2);
+    assertEquals(base, digest(mmd, 2));
+    assertTrue(!base.equals(digest(mmd, 3)));
+    assertTrue(!base.equals(digest("other".getBytes(StandardCharsets.UTF_8), 2)));
+  }
+
+  @Test
+  void needsRenderMatrix() throws Exception {
+    Path png = dir.resolve("flow.png");
+    byte[] image = "fake-png".getBytes(StandardCharsets.UTF_8);
+    Files.write(png, image);
+    String input = digest("mmd".getBytes(StandardCharsets.UTF_8), 2);
+    String recorded = input + ":" + RenderSupport.shaHex(image);
+
+    assertTrue(!RenderSupport.needsRender(recorded, input, png));
+    assertTrue(RenderSupport.needsRender(null, input, png));
+    assertTrue(RenderSupport.needsRender("malformed", input, png));
+    assertTrue(RenderSupport.needsRender("deadbeef:" + RenderSupport.shaHex(image), input, png));
+    assertTrue(RenderSupport.needsRender(input + ":deadbeef", input, png));
+    assertTrue(RenderSupport.needsRender(recorded, input, dir.resolve("gone.png")));
+  }
+
+  @Test
+  void prunesKeysForRemovedSources() throws Exception {
+    Files.writeString(dir.resolve("kept.mmd"), "a", StandardCharsets.UTF_8);
+    Map<String, String> state =
+        new LinkedHashMap<>(
+            Map.of(
+                "diagram/kept.png", "x:y",
+                "diagram/gone.png", "x:y",
+                "01-page.md", "abc"));
+
+    RenderSupport.pruneRemovedDiagrams(state, dir);
+
+    assertEquals(Set.of("diagram/kept.png", "01-page.md"), state.keySet());
+  }
+
+  @Test
+  void stateKeyFormat() {
+    assertEquals("diagram/flow.png", RenderSupport.stateKey("flow", "png"));
+    assertEquals("diagram/flow.svg", RenderSupport.stateKey("flow", "svg"));
+  }
+
+  private static String digest(byte[] mmd, int scale) {
+    return RenderSupport.diagramDigest(
+        mmd, "img:1", "docker", List.of(), "white", scale, "{}", "{}");
   }
 
   private static List<String> fileNames(List<Path> paths) {

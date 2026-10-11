@@ -86,6 +86,13 @@ public abstract class ConfluenceExtension {
   /** Keep processing remaining files after a failure. */
   public abstract Property<Boolean> getContinueOnError();
 
+  /**
+   * Publish only pages changed since the state file (the config form of the task's {@code
+   * --changed} option). Unlike {@code changesOnly}, which compares each page against the remote
+   * wiki, this filters the selection locally before anything runs.
+   */
+  public abstract Property<Boolean> getOnlyChanged();
+
   /** When true, {@code confluenceCompile} joins {@code check} (publish never does). */
   public abstract Property<Boolean> getVerifyOnCheck();
 
