@@ -19,17 +19,41 @@ public final class MetadataParser {
 
   /** Options for {@link #parseDocument}; mirrors {@code parse_document} keyword arguments. */
   public static class ParseOptions {
+    /** Creates options with defaults. */
+    public ParseOptions() {}
+
+    /** File name for messages and filename titles. */
     public String filename = "";
+
+    /** Take the page title from the leading H1. */
     public boolean titleFromH1 = false;
+
+    /** Take the page title from the file name. */
     public boolean titleFromFilename = false;
+
+    /** Default space key when the document has none. */
     public String space = "";
+
+    /** Parent pages prepended to the document's own parents. */
     public List<String> parents = new ArrayList<>();
+
+    /** Default content appearance when the document has none. */
     public String contentAppearance = "";
+
+    /** Append a short parents/space/title hash to the title. */
     public boolean titleAppendHash = false;
+
+    /** Whether to read YAML front matter. */
     public boolean frontMatter = true;
   }
 
-  /** Result of {@link #parseDocument}: metadata, body, warnings. */
+  /**
+   * Result of {@link #parseDocument}: metadata, body, warnings.
+   *
+   * @param meta the parsed metadata
+   * @param body the body with front matter and header run removed
+   * @param warnings warnings for ignored keys and stranded headers
+   */
   public record ParseResult(Meta meta, String body, List<String> warnings) {}
 
   /**
@@ -37,6 +61,10 @@ public final class MetadataParser {
    *
    * <p>Returns the meta (possibly empty â€” callers must still require a title and space), the body
    * with front matter and header run removed, and warnings.
+   *
+   * @param text the Markdown document
+   * @param opts parse options
+   * @return the parse result
    */
   public static ParseResult parseDocument(String text, ParseOptions opts) {
     List<String> warnings = new ArrayList<>();
@@ -240,7 +268,12 @@ public final class MetadataParser {
     return new ParseResult(meta, body, warnings);
   }
 
-  /** Headers left in the body (below other content) that will not apply. */
+  /**
+   * Headers left in the body (below other content) that will not apply.
+   *
+   * @param body the document body
+   * @return one warning per stranded header
+   */
   public static List<String> warnStrandedHeaders(String body) {
     List<String> warnings = new ArrayList<>();
     List<String> lines = TextLines.splitLines(body);

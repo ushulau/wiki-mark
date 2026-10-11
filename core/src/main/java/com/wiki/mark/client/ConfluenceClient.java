@@ -83,6 +83,13 @@ public class ConfluenceClient implements PageStore {
   private Sleeper sleeper = seconds -> Thread.sleep((long) (seconds * 1000));
   private boolean insecureWarned;
 
+  /**
+   * Creates a client. Options must be set before the first request.
+   *
+   * @param baseUrl site base URL, trailing slashes stripped
+   * @param username account email for Cloud, or empty for PAT auth
+   * @param password API token or personal access token
+   */
   public ConfluenceClient(String baseUrl, String username, String password) {
     if (baseUrl == null || baseUrl.isEmpty()) {
       throw new ConfluenceException("base-url is required");
@@ -100,7 +107,12 @@ public class ConfluenceClient implements PageStore {
     return baseUrl;
   }
 
-  /** Per-request timeout (connect stays 10s); default 30s. */
+  /**
+   * Per-request timeout (connect stays 10s); default 30s.
+   *
+   * @param timeout the timeout
+   * @return this client
+   */
   public ConfluenceClient setTimeout(Duration timeout) {
     if (timeout == null || timeout.isNegative()) {
       throw new IllegalArgumentException("timeout must be non-negative");
@@ -109,7 +121,12 @@ public class ConfluenceClient implements PageStore {
     return this;
   }
 
-  /** Retries after the initial attempt for 429/503 and transport errors; default 3. */
+  /**
+   * Retries after the initial attempt for 429/503 and transport errors; default 3.
+   *
+   * @param maxRetries the retry count
+   * @return this client
+   */
   public ConfluenceClient setMaxRetries(int maxRetries) {
     if (maxRetries < 0) {
       throw new IllegalArgumentException("maxRetries must be non-negative");
@@ -118,13 +135,24 @@ public class ConfluenceClient implements PageStore {
     return this;
   }
 
-  /** Trust any certificate and skip hostname verification. Default off; logs a loud warning. */
+  /**
+   * Trust any certificate and skip hostname verification. Default off; logs a loud warning.
+   *
+   * @param insecureSkipTlsVerify whether to skip verification
+   * @return this client
+   */
   public ConfluenceClient setInsecureSkipTlsVerify(boolean insecureSkipTlsVerify) {
     this.insecureSkipTlsVerify = insecureSkipTlsVerify;
     return this;
   }
 
-  /** Extra trust store AUGMENTING the default JVM store (corporate CA plus public CAs). */
+  /**
+   * Extra trust store AUGMENTING the default JVM store (corporate CA plus public CAs).
+   *
+   * @param trustStore the trust store file
+   * @param password the trust store password
+   * @return this client
+   */
   public ConfluenceClient setTrustStore(Path trustStore, String password) {
     this.trustStore = trustStore;
     this.trustStorePassword = password;
@@ -288,7 +316,13 @@ public class ConfluenceClient implements PageStore {
 
   // -- pages ---------------------------------------------------------------
 
-  /** Live page by title, or null. Results are cached per run. */
+  /**
+   * Live page by title, or null. Results are cached per run.
+   *
+   * @param space the space key
+   * @param title the page title
+   * @return the page map, or null when absent
+   */
   public Map<String, Object> findPage(String space, String title) {
     return findPage(space, title, "page");
   }
@@ -339,10 +373,23 @@ public class ConfluenceClient implements PageStore {
     return new LinkedHashMap<>(page);
   }
 
+  /**
+   * Drops one cached page.
+   *
+   * @param space the space key
+   * @param title the page title
+   */
   public void invalidate(String space, String title) {
     invalidate(space, title, "page");
   }
 
+  /**
+   * Drops one cached page.
+   *
+   * @param space the space key
+   * @param title the page title
+   * @param type the page type
+   */
   public void invalidate(String space, String title, String type) {
     pageCache.remove(cacheKey(space, title, type));
   }
@@ -351,6 +398,13 @@ public class ConfluenceClient implements PageStore {
     return getPageById(pageId, "ancestors,version,body.storage");
   }
 
+  /**
+   * Page by id with the given expansions.
+   *
+   * @param pageId the remote page id
+   * @param expand the expand parameter
+   * @return the page map
+   */
   public Map<String, Object> getPageById(String pageId, String expand) {
     String what = "read page " + pageId;
     requireV1(what);
@@ -473,7 +527,11 @@ public class ConfluenceClient implements PageStore {
     return Map.of();
   }
 
-  /** Moves a page to the trash. Exists only for tests/cleanup; never exposed as a task. */
+  /**
+   * Moves a page to the trash. Exists only for tests/cleanup; never exposed as a task.
+   *
+   * @param pageId the remote page id
+   */
   public void deletePage(String pageId) {
     String what = "delete page " + pageId;
     requireV1(what);
@@ -485,6 +543,12 @@ public class ConfluenceClient implements PageStore {
 
   // -- attachments ---------------------------------------------------------
 
+  /**
+   * All attachments of a page, paginated.
+   *
+   * @param pageId the remote page id
+   * @return the attachment maps
+   */
   public List<Map<String, Object>> getAttachments(String pageId) {
     String what = "list attachments of page " + pageId;
     requireV1(what);
@@ -556,6 +620,15 @@ public class ConfluenceClient implements PageStore {
         "");
   }
 
+  /**
+   * Uploads a new attachment.
+   *
+   * @param pageId the remote page id
+   * @param filename the attachment file name
+   * @param comment the attachment comment
+   * @param data the attachment bytes
+   * @return the attachment info
+   */
   public Map<String, Object> createAttachment(
       String pageId, String filename, String comment, byte[] data) {
     String what = "attach '" + filename + "' to page " + pageId;
@@ -564,6 +637,16 @@ public class ConfluenceClient implements PageStore {
         "/content/" + pageId + "/child/attachment", filename, comment, data, what);
   }
 
+  /**
+   * Uploads a new version of an attachment.
+   *
+   * @param pageId the remote page id
+   * @param attachmentId the attachment id
+   * @param filename the attachment file name
+   * @param comment the attachment comment
+   * @param data the attachment bytes
+   * @return the attachment info
+   */
   public Map<String, Object> updateAttachment(
       String pageId, String attachmentId, String filename, String comment, byte[] data) {
     String what = "upload a new version of attachment '" + filename + "' of page " + pageId;
@@ -576,7 +659,12 @@ public class ConfluenceClient implements PageStore {
         what);
   }
 
-  /** Follows {@code _links.download} (absolute or base-relative) with the same auth. No retry. */
+  /**
+   * Follows {@code _links.download} (absolute or base-relative) with the same auth. No retry.
+   *
+   * @param attachment the attachment map
+   * @return the bytes
+   */
   public byte[] downloadAttachment(Map<String, Object> attachment) {
     String title = str(attachment, "title");
     Object links = attachment.get("_links");
@@ -638,10 +726,23 @@ public class ConfluenceClient implements PageStore {
 
   // -- labels --------------------------------------------------------------
 
+  /**
+   * Global labels of a page.
+   *
+   * @param pageId the remote page id
+   * @return the label names
+   */
   public List<String> getLabels(String pageId) {
     return getLabels(pageId, "global");
   }
 
+  /**
+   * Labels of a page for one prefix, paginated.
+   *
+   * @param pageId the remote page id
+   * @param prefix the label prefix
+   * @return the label names
+   */
   public List<String> getLabels(String pageId, String prefix) {
     String what = "read labels of page " + pageId;
     requireV1(what);
@@ -680,6 +781,12 @@ public class ConfluenceClient implements PageStore {
     return kept;
   }
 
+  /**
+   * Adds global labels, skipping blanks.
+   *
+   * @param pageId the remote page id
+   * @param labels the labels to add
+   */
   public void addLabels(String pageId, List<String> labels) {
     List<String> kept = new ArrayList<>();
     for (String label : labels) {
@@ -703,6 +810,12 @@ public class ConfluenceClient implements PageStore {
     }
   }
 
+  /**
+   * Removes one label.
+   *
+   * @param pageId the remote page id
+   * @param label the label to remove
+   */
   public void deleteLabel(String pageId, String label) {
     String what = "remove label '" + label + "' from page " + pageId;
     requireV1(what);

@@ -137,6 +137,8 @@ public final class MiniYaml {
   /**
    * Parse a flat YAML mapping with one level of block lists/mappings.
    *
+   * @param text the YAML mapping text
+   * @return the parsed mapping
    * @throws MetaException on anything deeper or misshapen.
    */
   public static Map<String, Object> parseSimpleYaml(String text) {

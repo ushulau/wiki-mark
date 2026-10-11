@@ -28,7 +28,12 @@ public final class Json {
 
   private Json() {}
 
-  /** Parses one JSON document; throws {@link JsonParseException} on any malformation. */
+  /**
+   * Parses one JSON document; throws {@link JsonParseException} on any malformation.
+   *
+   * @param text the JSON document
+   * @return the model value
+   */
   public static Object parse(String text) {
     Parser parser = new Parser(text);
     Object value = parser.parseValue(0);
@@ -39,7 +44,12 @@ public final class Json {
     return value;
   }
 
-  /** Writes a model value as compact JSON. */
+  /**
+   * Writes a model value as compact JSON.
+   *
+   * @param value the model value
+   * @return the compact JSON
+   */
   public static String write(Object value) {
     StringBuilder out = new StringBuilder();
     writeInto(out, value);

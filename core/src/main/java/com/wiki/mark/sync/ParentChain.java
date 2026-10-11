@@ -14,6 +14,14 @@ public final class ParentChain {
    *
    * <p>Under {@code dryRun} nothing is created: the first missing parent is reported and the
    * deepest <em>existing</em> parent's id is returned (or null).
+   *
+   * @param client the page store
+   * @param space the space key
+   * @param type the page type
+   * @param parents the parent titles in order
+   * @param dryRun whether to only report missing parents
+   * @param log the log
+   * @return the deepest parent id, or null when there are no parents
    */
   public static String ensureParentChain(
       PageStore client, String space, String type, List<String> parents, boolean dryRun, Log log) {

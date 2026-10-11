@@ -30,12 +30,23 @@ public class BlockRenderer {
   private final boolean dropH1;
   private boolean droppedH1 = false;
 
+  /**
+   * Creates a renderer.
+   *
+   * @param inline the inline renderer for block contents
+   * @param dropH1 whether to drop the first H1 heading
+   */
   public BlockRenderer(InlineRenderer inline, boolean dropH1) {
     this.inline = inline;
     this.dropH1 = dropH1;
   }
 
-  /** Render a line list to storage-HTML blocks. */
+  /**
+   * Render a line list to storage-HTML blocks.
+   *
+   * @param lines the document lines
+   * @return the rendered blocks
+   */
   public List<String> renderBlocks(List<String> lines) {
     List<String> blocks = new ArrayList<>();
     int i = 0;

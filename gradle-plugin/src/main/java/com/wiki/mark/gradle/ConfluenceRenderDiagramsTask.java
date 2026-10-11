@@ -37,62 +37,148 @@ import org.gradle.process.ExecResult;
  * via per-diagram hashes in the shared state file.
  */
 public abstract class ConfluenceRenderDiagramsTask extends DefaultTask {
+  /** Creates the task. Gradle supplies the managed properties. */
+  public ConfluenceRenderDiagramsTask() {}
+
+  /**
+   * Render {@code .mmd} diagrams to PNG. When neither this nor {@code convertToSvg} is set, the
+   * task logs and skips.
+   *
+   * @return the convert-to-PNG flag property
+   */
   @Input
   public abstract Property<Boolean> getConvertToPng();
 
+  /**
+   * Render {@code .mmd} diagrams to SVG. Note Confluence serves SVG attachments for download rather
+   * than inline, so PNG is the practical format for published pages.
+   *
+   * @return the convert-to-SVG flag property
+   */
   @Input
   public abstract Property<Boolean> getConvertToSvg();
 
+  /**
+   * Directory holding the {@code .mmd} sources and rendered images. Defaults to pagesDir/diagrams.
+   *
+   * @return the source directory property
+   */
   @Internal
   public abstract DirectoryProperty getSourceDir();
 
+  /**
+   * Project directory; locates the change-tracking state file.
+   *
+   * @return the project directory property
+   */
   @Internal
   public abstract DirectoryProperty getProjectDir();
 
-  /** Process {@code PATH}, wired from the environment so the lookup stays cache-compatible. */
+  /**
+   * Process {@code PATH}, wired from the environment so the lookup stays cache-compatible.
+   *
+   * @return the PATH property
+   */
   @Internal
   public abstract Property<String> getPathEnvironment();
 
+  /**
+   * The {@code .mmd} files considered for rendering.
+   *
+   * @return the MMD source files
+   */
   @InputFiles
   @PathSensitive(PathSensitivity.RELATIVE)
   public abstract ConfigurableFileCollection getMmdSources();
 
+  /**
+   * mermaid-cli container image; the tag is pinned, override to upgrade.
+   *
+   * @return the container image property
+   */
   @Input
   public abstract Property<String> getContainerImage();
 
+  /**
+   * Container engine binary: {@code docker} or {@code podman}.
+   *
+   * @return the container engine property
+   */
   @Input
   public abstract Property<String> getContainerEngine();
 
+  /**
+   * Extra engine {@code run} flags before the image; the default depends on the engine.
+   *
+   * @return the extra engine run-arguments property
+   */
   @Input
   public abstract ListProperty<String> getExtraRunArgs();
 
+  /**
+   * {@code mmdc -s} scale factor.
+   *
+   * @return the scale property
+   */
   @Input
   public abstract Property<Integer> getScale();
 
+  /**
+   * {@code mmdc -b} background color.
+   *
+   * @return the background property
+   */
   @Input
   public abstract Property<String> getBackground();
 
+  /**
+   * {@code mmdc -c} config blob; the default disables HTML labels Confluence cannot render.
+   *
+   * @return the Mermaid config property
+   */
   @Input
   public abstract Property<String> getMermaidJson();
 
+  /**
+   * {@code mmdc -p} config blob; the default matches the reference {@code render.sh}.
+   *
+   * @return the Puppeteer config property
+   */
   @Input
   public abstract Property<String> getPuppeteerJson();
 
+  /**
+   * Directory receiving the rendered images; the same directory that holds the {@code .mmd}
+   * sources.
+   *
+   * @return the output directory property
+   */
   @OutputDirectory
   public abstract DirectoryProperty getOutputDir();
 
+  /**
+   * Render only these diagrams (names, {@code .mmd} suffix optional). Repeatable.
+   *
+   * @return the only-diagrams property
+   */
   @Input
   @Option(
       option = "only",
       description = "Render only these diagrams (names, .mmd suffix optional). Repeatable.")
   public abstract ListProperty<String> getOnlyDiagrams();
 
+  /**
+   * Exec operations used to run the container engine.
+   *
+   * @return the exec operations
+   */
   @Inject
   public abstract ExecOperations getExecOperations();
 
   /** One diagram in one format, with its current input digest. */
   private record RenderOp(Path mmd, String stem, String format, String inputHash) {}
 
+  /** Renders every diagram whose inputs changed; skips the rest. */
   @TaskAction
   public void render() {
     try {

@@ -23,6 +23,7 @@ subprojects {
     }
     tasks.withType(JavaCompile).configureEach {
         options.release = 17
+        mustRunAfter(tasks.named('spotlessApply'))
     }
 
     repositories {
@@ -47,6 +48,16 @@ subprojects {
             trimTrailingWhitespace()
         }
     }
+
+    tasks.matching { it.name.startsWith('spotless') && it.name.endsWith('Check') }.configureEach {
+        mustRunAfter(tasks.named('spotlessApply'))
+    }
+}
+
+tasks.register('spotlessApply') {
+    group = 'formatting'
+    description = 'Applies Spotless formatting to all modules.'
+    dependsOn(subprojects.collect { it.tasks.named('spotlessApply') })
 }
 
 tasks.named('check') {
@@ -54,6 +65,7 @@ tasks.named('check') {
 }
 
 tasks.named('build') {
+    dependsOn(tasks.named('spotlessApply'))
     dependsOn(subprojects.collect { it.tasks.named('build') })
 }
 

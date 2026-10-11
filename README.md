@@ -31,7 +31,7 @@ pluginManagement {
 
 ```groovy
 plugins {
-  id 'com.wiki.mark.confluence-publish' version '0.1.0'
+  id 'com.wiki.mark.confluence-publish' version '0.1.1'
 }
 ```
 

@@ -14,6 +14,12 @@ import java.util.List;
 public final class TextLines {
   private TextLines() {}
 
+  /**
+   * Splits text into lines, discarding the breaks.
+   *
+   * @param text the text to split
+   * @return the lines without breaks
+   */
   public static List<String> splitLines(String text) {
     List<String> out = new ArrayList<>();
     int start = 0;
@@ -42,6 +48,12 @@ public final class TextLines {
     return out;
   }
 
+  /**
+   * Splits text into lines, keeping the breaks.
+   *
+   * @param text the text to split
+   * @return the lines with breaks
+   */
   public static List<String> splitLinesKeepends(String text) {
     List<String> out = new ArrayList<>();
     int start = 0;

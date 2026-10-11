@@ -28,70 +28,179 @@ import org.gradle.api.tasks.TaskAction;
  */
 @CacheableTask
 public abstract class ConfluenceCompileTask extends DefaultTask {
+  /** Creates the task. Gradle supplies the managed properties. */
+  public ConfluenceCompileTask() {}
+
+  /**
+   * Directory holding the wiki pages. Defaults to {@code documentation/wiki}.
+   *
+   * @return the pages directory property
+   */
   @InputDirectory
   @PathSensitive(PathSensitivity.RELATIVE)
   public abstract DirectoryProperty getPagesDir();
 
+  /**
+   * Page patterns relative to {@code pagesDir}. Defaults to every Markdown file, recursively.
+   *
+   * @return the page patterns property
+   */
   @Input
   public abstract ListProperty<String> getPageIncludes();
 
+  /**
+   * Default space key when a page has no {@code Space} header.
+   *
+   * @return the default space key property
+   */
   @Input
   public abstract Property<String> getSpace();
 
+  /**
+   * Max image height in pixels; per-file header wins.
+   *
+   * @return the max image height property
+   */
   @Input
   public abstract Property<String> getImageHeight();
 
+  /**
+   * Max image width in pixels; per-file header wins.
+   *
+   * @return the max image width property
+   */
   @Input
   public abstract Property<String> getImageWidth();
 
+  /**
+   * Image alignment ({@code left}, {@code center}, {@code right}); per-file header wins.
+   *
+   * @return the image alignment property
+   */
   @Input
   public abstract Property<String> getImageAlign();
 
+  /**
+   * Content appearance ({@code full-width}, {@code fixed}, {@code default}) when unset per page.
+   *
+   * @return the content appearance property
+   */
   @Input
   public abstract Property<String> getContentAppearance();
 
+  /**
+   * Take the page title from the leading H1. Mutually exclusive with {@code titleFromFilename}.
+   *
+   * @return the title-from-H1 flag property
+   */
   @Input
   public abstract Property<Boolean> getTitleFromH1();
 
+  /**
+   * Take the page title from the file name. Mutually exclusive with {@code titleFromH1}.
+   *
+   * @return the title-from-filename flag property
+   */
   @Input
   public abstract Property<Boolean> getTitleFromFilename();
 
+  /**
+   * Append a short parents/space/title hash to each title.
+   *
+   * @return the title-hash flag property
+   */
   @Input
   public abstract Property<Boolean> getTitleAppendHash();
 
+  /**
+   * Do not publish the first H1 heading.
+   *
+   * @return the drop-H1 flag property
+   */
   @Input
   public abstract Property<Boolean> getDropH1();
 
+  /**
+   * Parent pages prepended to each document's own parents.
+   *
+   * @return the parents property
+   */
   @Input
   public abstract ListProperty<String> getParents();
 
+  /**
+   * Place each page under pages named after its directories.
+   *
+   * @return the parents-from-path flag property
+   */
   @Input
   public abstract Property<Boolean> getParentsFromPath();
 
+  /**
+   * Directory {@code parentsFromPath} measures from. Defaults to {@code pagesDir}.
+   *
+   * @return the parents-from-path root property
+   */
   @Input
   public abstract Property<String> getParentsFromPathRoot();
 
+  /**
+   * Add labels without removing existing ones.
+   *
+   * @return the append-labels flag property
+   */
   @Input
   public abstract Property<Boolean> getAppendLabels();
 
+  /**
+   * Do not send notifications on update.
+   *
+   * @return the minor-edit flag property
+   */
   @Input
   public abstract Property<Boolean> getMinorEdit();
 
+  /**
+   * Page version message.
+   *
+   * @return the version message property
+   */
   @Input
   public abstract Property<String> getVersionMessage();
 
+  /**
+   * Skip pages whose content hash already matches the remote version.
+   *
+   * @return the changes-only flag property
+   */
   @Input
   public abstract Property<Boolean> getChangesOnly();
 
+  /**
+   * Upload local files that links point at.
+   *
+   * @return the attach-referenced flag property
+   */
   @Input
   public abstract Property<Boolean> getAttachReferenced();
 
+  /**
+   * Keep processing remaining files after a failure.
+   *
+   * @return the continue-on-error flag property
+   */
   @Input
   public abstract Property<Boolean> getContinueOnError();
 
+  /**
+   * Directory receiving the rendered storage files. Defaults to {@code build/confluence/storage}.
+   *
+   * @return the output directory property
+   */
   @OutputDirectory
   public abstract DirectoryProperty getOutputDir();
 
+  /** Runs the offline conversion; header validation failures fail the task. */
   @TaskAction
   public void compile() {
     try {

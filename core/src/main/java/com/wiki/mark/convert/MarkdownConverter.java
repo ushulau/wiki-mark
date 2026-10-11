@@ -18,24 +18,41 @@ public final class MarkdownConverter {
 
   /** Options for {@link #render}; mirrors {@code render} keyword arguments. */
   public static class RenderOptions {
+    /** Creates options with defaults. */
+    public RenderOptions() {}
+
+    /** Do not publish the first H1 heading. */
     public boolean dropH1 = false;
 
     /** Accepted for CLI parity; always a no-op (see class javadoc in the reference). */
     public boolean stripLinebreaks = false;
 
+    /** Image alignment; empty selects none. */
     public String imageAlign = "";
+
+    /** Max image width in pixels; empty selects none. */
     public String imageMaxWidth = "";
+
+    /** Max image height in pixels; empty selects none. */
     public String imageMaxHeight = "";
+
+    /** Directory local image paths resolve from. */
     public String imageBaseDir = "";
+
+    /** Maps a normalized absolute path of another local md file to its page title. */
     public Map<String, String> pageLinks = null;
+
+    /** Upload local files that links point at. */
     public boolean attachReferenced = false;
   }
 
   /**
    * Render Markdown to Confluence storage format.
    *
-   * @param pageLinks maps a normalized absolute path of another local {@code .md} file to that
-   *     file's Confluence page title; may be null.
+   * @param markdownText the Markdown source
+   * @param opts render options; {@code opts.pageLinks} maps a normalized absolute path of another
+   *     local {@code .md} file to that file's Confluence page title, may be null
+   * @return the storage plus the local refs to upload
    */
   public static RenderResult render(String markdownText, RenderOptions opts) {
     List<String> attachments = new ArrayList<>();

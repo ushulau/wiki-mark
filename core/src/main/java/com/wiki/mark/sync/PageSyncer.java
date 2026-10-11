@@ -40,7 +40,12 @@ import java.util.stream.Stream;
 public final class PageSyncer {
   private PageSyncer() {}
 
-  /** Directory parents of a file measured from a root, plus whether it is an index page. */
+  /**
+   * Directory parents of a file measured from a root, plus whether it is an index page.
+   *
+   * @param parents the parent titles in order
+   * @param index whether the file stands for its own directory
+   */
   public record PathParents(List<String> parents, boolean index) {}
 
   private static final Set<String> INDEX_STEMS = Set.of("index", "readme");
@@ -52,6 +57,10 @@ public final class PageSyncer {
    * <p>Port of {@code parents_from_path}: path segments Title-Cased, an {@code index.md} or {@code
    * README.md} standing for its own directory (last segment dropped), nothing when the file sits
    * outside the root. An empty root falls back to the last two directories.
+   *
+   * @param file the file
+   * @param root the root to measure from
+   * @return the parents plus the index flag
    */
   public static PathParents parentsFromPath(Path file, String root) {
     Path directory = file.toAbsolutePath().normalize().getParent();
@@ -93,7 +102,13 @@ public final class PageSyncer {
     return new PathParents(parents, index);
   }
 
-  /** Effective image alignment (per-file header wins); anything but left/center/right errors. */
+  /**
+   * Effective image alignment (per-file header wins); anything but left/center/right errors.
+   *
+   * @param configAlign the configured alignment
+   * @param metaAlign the per-file alignment
+   * @return the effective alignment
+   */
   public static String resolveImageAlign(String configAlign, String metaAlign) {
     String align = firstNonEmpty(metaAlign, configAlign).strip().toLowerCase(Locale.ROOT);
     if (!align.isEmpty()
@@ -106,7 +121,14 @@ public final class PageSyncer {
     return align;
   }
 
-  /** Effective image dimension (per-file header wins); must be a positive integer when set. */
+  /**
+   * Effective image dimension (per-file header wins); must be a positive integer when set.
+   *
+   * @param name the option name for messages
+   * @param configValue the configured value
+   * @param metaValue the per-file value
+   * @return the effective value
+   */
   public static String resolveImageDimension(String name, String configValue, String metaValue) {
     String value = firstNonEmpty(metaValue, configValue).strip();
     if (!value.isEmpty() && !isPositiveInteger(value)) {
@@ -138,7 +160,12 @@ public final class PageSyncer {
     return false;
   }
 
-  /** Targets of the {@code <!-- Include: ... -->} markers in a body (unexpanded, warned about). */
+  /**
+   * Targets of the {@code <!-- Include: ... -->} markers in a body (unexpanded, warned about).
+   *
+   * @param body the document body
+   * @return the include targets
+   */
   public static List<String> findIncludes(String body) {
     List<String> includes = new ArrayList<>();
     Matcher matcher = INCLUDE_RE.matcher(body);
@@ -151,7 +178,14 @@ public final class PageSyncer {
     return includes;
   }
 
-  /** Warns, per file, about headers the publisher reads but never applies. */
+  /**
+   * Warns, per file, about headers the publisher reads but never applies.
+   *
+   * @param path the file path for messages
+   * @param meta the document metadata
+   * @param body the document body
+   * @param log the log
+   */
   public static void warnUnsupportedHeaders(String path, Meta meta, String body, Log log) {
     if (meta.folders != null && !meta.folders.isEmpty()) {
       log.warn(path + ": Folder headers are not supported and were ignored");
@@ -172,6 +206,10 @@ public final class PageSyncer {
    *
    * <p>Port of {@code build_page_title_map}: unreadable or untitled files are silently skipped
    * (links to them fall back to a plain {@code <a>}).
+   *
+   * @param files the files to map
+   * @param opts the sync options
+   * @return the path to title map
    */
   public static Map<String, String> buildPageTitleMap(List<Path> files, SyncOptions opts) {
     Map<String, String> titles = new LinkedHashMap<>();
@@ -202,7 +240,13 @@ public final class PageSyncer {
     return parse;
   }
 
-  /** Public page URL from the page links (base falls back to the client's base URL). */
+  /**
+   * Public page URL from the page links (base falls back to the client's base URL).
+   *
+   * @param baseUrl the fallback base URL
+   * @param page the page map
+   * @return the page URL
+   */
   public static String pageUrl(String baseUrl, Map<String, Object> page) {
     String base = "";
     String webui = "";
@@ -235,6 +279,11 @@ public final class PageSyncer {
    * pattern naming a directory matches it without error; {@code **} crosses directories; matching
    * is case-insensitive on Windows; a literal name containing glob metacharacters (which classes
    * never match) falls back to the file itself.
+   *
+   * @param sourceDir the directory relative patterns resolve from
+   * @param pattern the glob pattern
+   * @return the matching paths, sorted
+   * @throws IOException if a directory cannot be walked
    */
   public static List<Path> matchGlob(Path sourceDir, String pattern) throws IOException {
     String text = WINDOWS ? pattern.replace('\\', '/') : pattern;
@@ -454,6 +503,11 @@ public final class PageSyncer {
   /**
    * Header attachment patterns resolved against the page directory, deduplicated. Every pattern
    * must match at least one file; a missing one fails the file.
+   *
+   * @param patterns the attachment patterns
+   * @param sourceDir the directory patterns resolve from
+   * @return the matched files, deduplicated
+   * @throws IOException if a directory cannot be walked
    */
   public static List<Path> attachmentPaths(List<String> patterns, Path sourceDir)
       throws IOException {
@@ -477,6 +531,14 @@ public final class PageSyncer {
    *
    * <p>A null client (or {@code compileOnly}) takes the compile branch: no network, no token.
    * Target-URL mode does not exist in v0.1, so there is no page-id parameter.
+   *
+   * @param file the file to sync
+   * @param opts the sync options
+   * @param client the page store, or null for the compile branch
+   * @param pageTitles the path to title map for cross-file links
+   * @param log the log
+   * @return the file outcome
+   * @throws IOException if the file cannot be read
    */
   public static SyncResult syncFile(
       Path file, SyncOptions opts, PageStore client, Map<String, String> pageTitles, Log log)
@@ -680,6 +742,12 @@ public final class PageSyncer {
    * Syncs a batch of files as one run (one title map, sequential), collecting per-file failures. An
    * empty selection succeeds with an informational message. Per-file failures become {@code FAILED}
    * results; the caller fails the run with {@link RunReport#throwIfFailed}.
+   *
+   * @param files the files to sync
+   * @param opts the sync options
+   * @param client the page store, or null for the compile branch
+   * @param log the log
+   * @return the run report
    */
   public static RunReport run(List<Path> files, SyncOptions opts, PageStore client, Log log) {
     List<SyncResult> results = new ArrayList<>();

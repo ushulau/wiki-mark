@@ -11,6 +11,9 @@ import org.gradle.api.tasks.TaskProvider;
  * the {@code java} plugin; safe to apply to the root or any project.
  */
 public class ConfluencePublishPlugin implements Plugin<Project> {
+  /** Creates the plugin. */
+  public ConfluencePublishPlugin() {}
+
   @Override
   public void apply(Project project) {
     ConfluenceExtension extension =

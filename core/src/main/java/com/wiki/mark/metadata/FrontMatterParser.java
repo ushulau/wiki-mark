@@ -18,7 +18,12 @@ import java.util.Map;
 public final class FrontMatterParser {
   private FrontMatterParser() {}
 
-  /** Split of a document into optional YAML text and the remaining body. */
+  /**
+   * Split of a document into optional YAML text and the remaining body.
+   *
+   * @param yamlOrNull the YAML text, or null when the document has no front matter
+   * @param body the remaining body
+   */
   public record FrontMatter(String yamlOrNull, String body) {}
 
   /**
@@ -26,6 +31,9 @@ public final class FrontMatterParser {
    *
    * <p>When the document does not open with a {@code ---} line, or no closing {@code ---}/{@code
    * ...} line follows, there is no front matter and the body is returned unchanged.
+   *
+   * @param text the document
+   * @return the split
    */
   public static FrontMatter splitFrontMatter(String text) {
     List<String> lines = TextLines.splitLinesKeepends(text);

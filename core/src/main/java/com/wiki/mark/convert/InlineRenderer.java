@@ -43,6 +43,17 @@ public class InlineRenderer {
   private final List<String> spans = new ArrayList<>();
   private final List<String> escapes = new ArrayList<>();
 
+  /**
+   * Creates a renderer.
+   *
+   * @param imageAlign image alignment; anything but left/center/right selects none
+   * @param imageMaxWidth max image width in pixels; empty selects none
+   * @param imageMaxHeight max image height in pixels; empty selects none
+   * @param imageBaseDir directory local refs resolve from
+   * @param pageLinks md path to page title map, null means none
+   * @param attachReferenced upload linked local files as attachments
+   * @param attachments collects the local refs to upload
+   */
   public InlineRenderer(
       String imageAlign,
       String imageMaxWidth,
@@ -136,7 +147,12 @@ public class InlineRenderer {
     return sub(ESCAPE_PH_RE, text, match -> escapes.get(Integer.parseInt(match.group(1))));
   }
 
-  /** Render one inline span. */
+  /**
+   * Render one inline span.
+   *
+   * @param text the inline span
+   * @return the rendered HTML
+   */
   public String render(String text) {
     text = stashEscapes(text);
     text = stashCode(text);

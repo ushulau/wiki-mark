@@ -54,7 +54,12 @@ public final class TitleResolver {
     return text.strip();
   }
 
-  /** First H1's text (ATX {@code #} or Setext {@code ===}), outside fenced code. */
+  /**
+   * First H1's text (ATX {@code #} or Setext {@code ===}), outside fenced code.
+   *
+   * @param markdownText the document
+   * @return the H1 text, or {@code ""} when absent
+   */
   public static String extractLeadingH1(String markdownText) {
     List<String> lines = TextLines.splitLines(markdownText);
     Set<Integer> hidden = codeFenceSpans(lines);
@@ -99,6 +104,9 @@ public final class TitleResolver {
    *
    * <p>Ports Python {@code str.title()}: the first cased letter after a non-cased character is
    * uppercased, other cased letters are lowercased.
+   *
+   * @param name the file or directory name
+   * @return the derived title
    */
   public static String titleFromName(String name) {
     String spaced = name.replace("_", " ").replace("-", " ");
@@ -121,7 +129,11 @@ public final class TitleResolver {
     return out.toString();
   }
 
-  /** Append a short hash of parents/space/title to make a title unique. */
+  /**
+   * Append a short hash of parents/space/title to make a title unique.
+   *
+   * @param meta metadata whose title is updated in place
+   */
   public static void appendGeneratedHash(Meta meta) {
     StringBuilder path = new StringBuilder();
     for (String parent : meta.parents) {

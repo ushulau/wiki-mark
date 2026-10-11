@@ -7,6 +7,11 @@ public final class Layout {
   /**
    * Wraps {@code storage} in the two-column article layout; any other layout name (including the
    * empty default) returns the storage untouched.
+   *
+   * @param storage the page body
+   * @param layout the layout name
+   * @param sidebar the sidebar body
+   * @return the wrapped body
    */
   public static String applyLayout(String storage, String layout, String sidebar) {
     if (!"article".equals(layout)) {

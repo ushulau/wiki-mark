@@ -31,103 +31,258 @@ import org.gradle.api.tasks.options.Option;
  */
 @UntrackedTask(because = "Publishes to remote Confluence")
 public abstract class ConfluencePublishTask extends DefaultTask {
+  /** Creates the task. Gradle supplies the managed properties. */
+  public ConfluencePublishTask() {}
+
+  /**
+   * Confluence base URL, e.g. {@code https://wiki.example.com}. Required for publish only.
+   *
+   * @return the base URL property
+   */
   @Internal
   public abstract Property<String> getBaseUrl();
 
+  /**
+   * API token. Defaults to {@code -Pconfluence.token}, else {@code $CONFLUENCE_TOKEN}. Never
+   * logged, never fingerprinted.
+   *
+   * @return the API token property
+   */
   @Internal
   public abstract Property<String> getAuthToken();
 
+  /**
+   * Username; present means Basic auth, absent means token-only auth.
+   *
+   * @return the username property
+   */
   @Internal
   public abstract Property<String> getUsername();
 
+  /**
+   * Default space key when a page has no {@code Space} header.
+   *
+   * @return the default space key property
+   */
   @Internal
   public abstract Property<String> getSpace();
 
+  /**
+   * Directory holding the wiki pages. Defaults to {@code documentation/wiki}.
+   *
+   * @return the pages directory property
+   */
   @Internal
   public abstract DirectoryProperty getPagesDir();
 
+  /**
+   * Project directory; locates the change-tracking state file.
+   *
+   * @return the project directory property
+   */
   @Internal
   public abstract DirectoryProperty getProjectDir();
 
+  /**
+   * Page patterns relative to {@code pagesDir}. Defaults to every Markdown file, recursively.
+   *
+   * @return the page patterns property
+   */
   @Internal
   public abstract ListProperty<String> getPageIncludes();
 
+  /**
+   * Max image height in pixels; per-file header wins.
+   *
+   * @return the max image height property
+   */
   @Internal
   public abstract Property<String> getImageHeight();
 
+  /**
+   * Max image width in pixels; per-file header wins.
+   *
+   * @return the max image width property
+   */
   @Internal
   public abstract Property<String> getImageWidth();
 
+  /**
+   * Image alignment ({@code left}, {@code center}, {@code right}); per-file header wins.
+   *
+   * @return the image alignment property
+   */
   @Internal
   public abstract Property<String> getImageAlign();
 
+  /**
+   * Content appearance ({@code full-width}, {@code fixed}, {@code default}) when unset per page.
+   *
+   * @return the content appearance property
+   */
   @Internal
   public abstract Property<String> getContentAppearance();
 
+  /**
+   * Take the page title from the leading H1. Mutually exclusive with {@code titleFromFilename}.
+   *
+   * @return the title-from-H1 flag property
+   */
   @Internal
   public abstract Property<Boolean> getTitleFromH1();
 
+  /**
+   * Take the page title from the file name. Mutually exclusive with {@code titleFromH1}.
+   *
+   * @return the title-from-filename flag property
+   */
   @Internal
   public abstract Property<Boolean> getTitleFromFilename();
 
+  /**
+   * Append a short parents/space/title hash to each title.
+   *
+   * @return the title-hash flag property
+   */
   @Internal
   public abstract Property<Boolean> getTitleAppendHash();
 
+  /**
+   * Do not publish the first H1 heading.
+   *
+   * @return the drop-H1 flag property
+   */
   @Internal
   public abstract Property<Boolean> getDropH1();
 
+  /**
+   * Parent pages prepended to each document's own parents.
+   *
+   * @return the parents property
+   */
   @Internal
   public abstract ListProperty<String> getParents();
 
+  /**
+   * Place each page under pages named after its directories.
+   *
+   * @return the parents-from-path flag property
+   */
   @Internal
   public abstract Property<Boolean> getParentsFromPath();
 
+  /**
+   * Directory {@code parentsFromPath} measures from. Defaults to {@code pagesDir}.
+   *
+   * @return the parents-from-path root property
+   */
   @Internal
   public abstract Property<String> getParentsFromPathRoot();
 
+  /**
+   * Add labels without removing existing ones.
+   *
+   * @return the append-labels flag property
+   */
   @Internal
   public abstract Property<Boolean> getAppendLabels();
 
+  /**
+   * Do not send notifications on update.
+   *
+   * @return the minor-edit flag property
+   */
   @Internal
   public abstract Property<Boolean> getMinorEdit();
 
+  /**
+   * Page version message.
+   *
+   * @return the version message property
+   */
   @Internal
   public abstract Property<String> getVersionMessage();
 
+  /**
+   * Skip pages whose content hash already matches the remote version.
+   *
+   * @return the changes-only flag property
+   */
   @Internal
   public abstract Property<Boolean> getChangesOnly();
 
+  /**
+   * Upload local files that links point at.
+   *
+   * @return the attach-referenced flag property
+   */
   @Internal
   public abstract Property<Boolean> getAttachReferenced();
 
+  /**
+   * Keep processing remaining files after a failure.
+   *
+   * @return the continue-on-error flag property
+   */
   @Internal
   public abstract Property<Boolean> getContinueOnError();
 
+  /**
+   * Extra trust store augmenting the JVM store.
+   *
+   * @return the trust store property
+   */
   @Internal
   public abstract RegularFileProperty getTrustStore();
 
+  /**
+   * Trust store password. Never logged, never fingerprinted.
+   *
+   * @return the trust store password property
+   */
   @Internal
   public abstract Property<String> getTrustStorePassword();
 
+  /**
+   * Skip TLS verification. Loud warning on every use; testing only.
+   *
+   * @return the skip-TLS-verification flag property
+   */
   @Internal
   public abstract Property<Boolean> getInsecureSkipTlsVerify();
 
   // Named "preview": Gradle reserves --dry-run for its own no-execution mode, which would
   // shadow a task option and fake-succeed without running the action.
+  /**
+   * Resolve ancestry and print storage without writing.
+   *
+   * @return the preview flag property
+   */
   @Internal
   @Option(option = "preview", description = "Resolve ancestry and print storage without writing.")
   public abstract Property<Boolean> getPreview();
 
+  /**
+   * Publish only pages changed since the state file.
+   *
+   * @return the changed flag property
+   */
   @Internal
   @Option(option = "changed", description = "Publish only pages changed since the state file.")
   public abstract Property<Boolean> getChanged();
 
+  /**
+   * Publish only these files, relative to pagesDir. Repeatable.
+   *
+   * @return the only-files property
+   */
   @Internal
   @Option(
       option = "only",
       description = "Publish only these files, relative to pagesDir. Repeatable.")
   public abstract ListProperty<String> getOnlyFiles();
 
+  /** Syncs the selected pages to Confluence. */
   @TaskAction
   public void publish() {
     try {

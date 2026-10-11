@@ -8,6 +8,11 @@ package com.wiki.mark.json;
  * credentials, and only tiny fragments are quoted for debuggability.
  */
 public class JsonParseException extends RuntimeException {
+  /**
+   * Creates a failure.
+   *
+   * @param message the failure message
+   */
   public JsonParseException(String message) {
     super(message);
   }

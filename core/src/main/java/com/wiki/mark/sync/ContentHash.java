@@ -13,7 +13,12 @@ public final class ContentHash {
 
   private ContentHash() {}
 
-  /** SHA-1 hex of the storage bytes (UTF-8), the content tag {@code changesOnly} compares. */
+  /**
+   * SHA-1 hex of the storage bytes (UTF-8), the content tag {@code changesOnly} compares.
+   *
+   * @param storage the storage XHTML
+   * @return the hex digest
+   */
   public static String contentHash(String storage) {
     try {
       byte[] digest =
@@ -28,7 +33,13 @@ public final class ContentHash {
     }
   }
 
-  /** Prefixes the version message with the {@code [v<digest>]} tag. */
+  /**
+   * Prefixes the version message with the {@code [v<digest>]} tag.
+   *
+   * @param message the version message, may be empty
+   * @param digest the content digest
+   * @return the tagged message
+   */
   public static String formatVersionMessage(String message, String digest) {
     String tag = "[v" + digest + "]";
     return message.isEmpty() ? tag : tag + " " + message;
@@ -37,6 +48,9 @@ public final class ContentHash {
   /**
    * Reads the content tag back from a version message: a leading tag wins, else a trailing tag,
    * else {@code ""}. Null-safe (a missing message simply has no tag).
+   *
+   * @param message the version message, may be null
+   * @return the digest, or {@code ""} when untagged
    */
   public static String readContentHash(String message) {
     if (message == null) {

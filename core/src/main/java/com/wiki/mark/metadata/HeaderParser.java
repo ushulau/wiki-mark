@@ -13,25 +13,61 @@ import java.util.Locale;
  * so it must stay in this exact order.
  */
 public final class HeaderParser {
+  /** The {@code Parent} header name. */
   public static final String HEADER_PARENT = "Parent";
+
+  /** The {@code Folder} header name. */
   public static final String HEADER_FOLDER = "Folder";
+
+  /** The {@code Space} header name. */
   public static final String HEADER_SPACE = "Space";
+
+  /** The {@code Type} header name. */
   public static final String HEADER_TYPE = "Type";
+
+  /** The {@code Title} header name. */
   public static final String HEADER_TITLE = "Title";
+
+  /** The {@code Layout} header name. */
   public static final String HEADER_LAYOUT = "Layout";
+
+  /** The {@code Sidebar} header name. */
   public static final String HEADER_SIDEBAR = "Sidebar";
+
+  /** The {@code Emoji} header name. */
   public static final String HEADER_EMOJI = "Emoji";
+
+  /** The {@code Attachment} header name. */
   public static final String HEADER_ATTACHMENT = "Attachment";
+
+  /** The {@code Label} header name. */
   public static final String HEADER_LABEL = "Label";
+
+  /** The {@code Order} header name. */
   public static final String HEADER_ORDER = "Order";
+
+  /** The {@code Include} header name. */
   public static final String HEADER_INCLUDE = "Include";
+
+  /** The {@code Content-Appearance} header name. */
   public static final String HEADER_CONTENT_APPEARANCE = "Content-Appearance";
+
+  /** The {@code Image-Align} header name. */
   public static final String HEADER_IMAGE_ALIGN = "Image-Align";
+
+  /** The {@code Image-Width} header name. */
   public static final String HEADER_IMAGE_WIDTH = "Image-Width";
+
+  /** The {@code Image-Height} header name. */
   public static final String HEADER_IMAGE_HEIGHT = "Image-Height";
+
+  /** The {@code Property} header name. */
   public static final String HEADER_PROPERTY = "Property";
+
+  /** The {@code Synchronized} header name. */
   public static final String HEADER_SYNCHRONIZED = "Synchronized";
 
+  /** Known headers in match order; the order is significant for {@link #nearestHeader}. */
   public static final List<String> KNOWN_HEADERS =
       Arrays.asList(
           HEADER_ATTACHMENT,
@@ -53,13 +89,23 @@ public final class HeaderParser {
           HEADER_TITLE,
           HEADER_TYPE);
 
+  /** The full-width content appearance value. */
   public static final String FULL_WIDTH_CONTENT_APPEARANCE = "full-width";
+
+  /** The fixed content appearance value. */
   public static final String FIXED_CONTENT_APPEARANCE = "fixed";
+
+  /** The default content appearance value. */
   public static final String DEFAULT_CONTENT_APPEARANCE = "default";
 
   private HeaderParser() {}
 
-  /** The known header {@code key} names (case-insensitive), or null. */
+  /**
+   * The known header {@code key} names (case-insensitive), or null.
+   *
+   * @param key the header name as written
+   * @return the canonical header name, or null when unknown
+   */
   public static String canonicalHeader(String key) {
     String stripped = key.strip();
     for (String known : KNOWN_HEADERS) {
@@ -74,6 +120,10 @@ public final class HeaderParser {
    * One insertion, deletion, substitution or transposition (case-insensitive).
    *
    * <p>Ports {@code edit_distance_within_one} exactly, including transposition counting as one.
+   *
+   * @param a the first string
+   * @param b the second string
+   * @return whether the strings are within one edit
    */
   public static boolean editDistanceWithinOne(String a, String b) {
     char[] x = a.toLowerCase(Locale.ROOT).toCharArray();
@@ -115,7 +165,12 @@ public final class HeaderParser {
     return true;
   }
 
-  /** Header {@code key} was probably meant to be, if within one edit. */
+  /**
+   * Header {@code key} was probably meant to be, if within one edit.
+   *
+   * @param key the header name as written
+   * @return the nearest known header, or null when nothing is close
+   */
   public static String nearestHeader(String key) {
     String stripped = key.strip();
     if (stripped.isEmpty()) {
@@ -129,9 +184,20 @@ public final class HeaderParser {
     return null;
   }
 
-  /** Split of a {@code <!-- Key: value -->} line, or null when it is not one. */
+  /**
+   * Split of a {@code <!-- Key: value -->} line, or null when it is not one.
+   *
+   * @param key the header name as written
+   * @param value the header value
+   */
   public record HeaderComment(String key, String value) {}
 
+  /**
+   * Splits a {@code <!-- Key: value -->} line.
+   *
+   * @param line the line to split
+   * @return the split, or null when the line is not a header comment
+   */
   public static HeaderComment parseHeaderComment(String line) {
     String stripped = line.strip();
     if (!stripped.startsWith("<!--") || !stripped.endsWith("-->")) {
@@ -153,6 +219,9 @@ public final class HeaderParser {
    * Lenient content-appearance assignment: anything but {@code fixed}/{@code default} becomes
    * {@code full-width} (a typo silently becomes full-width â€” faithful to Python; only the
    * DSL/flag value is strictly validated).
+   *
+   * @param meta metadata whose appearance is updated in place
+   * @param value the appearance value
    */
   public static void setContentAppearance(Meta meta, String value) {
     String v = value.strip();
