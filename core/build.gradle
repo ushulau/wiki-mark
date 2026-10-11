@@ -1,0 +1,2 @@
+// core: plain Java library, no Gradle API. Lean by convention: prefer the JDK,
+// pull a dependency when it earns its place. Test scope is JUnit 5 only.

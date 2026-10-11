@@ -1,0 +1,4 @@
+reference/** text eol=lf
+*.storage.txt text eol=lf
+*.java text eol=lf
+*.gradle text eol=lf

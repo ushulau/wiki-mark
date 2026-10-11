@@ -1,0 +1,61 @@
+plugins {
+    id 'base'
+    // Adjust the version on first online build if this one is stale.
+    id 'com.diffplug.spotless' version '6.25.0' apply false
+}
+
+ext {
+    junitBomVersion = '5.11.4'
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'com.diffplug.spotless'
+
+    group = 'com.wiki.mark'
+    version = '0.1.0'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 17
+    }
+
+    repositories {
+        // Consumer CI may redirect this through the internal Nexus mirror.
+        mavenCentral()
+    }
+
+    dependencies {
+        testImplementation platform("org.junit:junit-bom:${rootProject.ext.junitBomVersion}")
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+    }
+
+    spotless {
+        java {
+            googleJavaFormat()
+            endWithNewline()
+            trimTrailingWhitespace()
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn(subprojects.collect { it.tasks.named('check') })
+}
+
+tasks.named('build') {
+    dependsOn(subprojects.collect { it.tasks.named('build') })
+}
+
+tasks.named('clean') {
+    dependsOn(subprojects.collect { it.tasks.named('clean') })
+}

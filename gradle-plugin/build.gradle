@@ -1,0 +1,70 @@
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.bundling.Jar
+import org.gradle.api.tasks.testing.Test
+
+plugins {
+    id 'java-gradle-plugin'
+    id 'maven-publish'
+}
+
+gradlePlugin {
+    plugins {
+        confluencePublish {
+            id = 'com.wiki.mark.confluence-publish'
+            implementationClass = 'com.wiki.mark.gradle.ConfluencePublishPlugin'
+        }
+    }
+}
+
+dependencies {
+    // compileOnly: core classes ship inside the plugin jar (see below), so the
+    // published metadata carries no core dependency for consumers to resolve.
+    compileOnly project(':core')
+    testImplementation project(':core')
+}
+
+// Bundle core into the plugin jar: a single published artifact.
+tasks.named('jar', Jar) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(project(':core').sourceSets.main.output)
+}
+
+// TestKit injects the plugin runtime classpath, not the jar, so core must be
+// visible there too once compileOnly stops propagating it.
+tasks.named('pluginUnderTestMetadata') {
+    pluginClasspath.from(project(':core').sourceSets.main.output)
+}
+
+// Nexus publishing repositories are configured in Phase 7 (credentials from
+// ~/.gradle/gradle.properties, never committed).
+
+testing {
+    suites {
+        functionalTest(JvmTestSuite) {
+            useJUnitJupiter()
+            dependencies {
+                implementation project()
+                implementation project(':core')
+                implementation gradleTestKit()
+                implementation "org.junit.jupiter:junit-jupiter:${rootProject.ext.junitBomVersion}"
+            }
+        }
+    }
+}
+
+// withPluginClasspath() needs the metadata properties on the test runtime classpath.
+tasks.named('processFunctionalTestResources') {
+    from(tasks.named('pluginUnderTestMetadata'))
+}
+
+tasks.named('functionalTest', Test) {
+    def pluginJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
+    inputs.files(pluginJar)
+    doFirst {
+        systemProperty('plugin.jar', pluginJar.get().asFile.absolutePath)
+    }
+}
+
+tasks.named('check') {
+    dependsOn testing.suites.functionalTest
+}

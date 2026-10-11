@@ -1,0 +1,4 @@
+rootProject.name = 'confluence-publish'
+include 'core'
+include 'cli'
+include 'gradle-plugin'
