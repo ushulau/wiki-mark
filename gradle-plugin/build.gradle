@@ -14,11 +14,11 @@ gradlePlugin {
     description = 'Gradle plugin that publishes Markdown documentation from the project into the Confluence wiki. It renders Mermaid diagrams to images and supports page hierarchy, attachments, labels, and incremental publishing of only changed pages.'
     plugins {
         confluencePublish {
-            id = 'com.wiki.mark.confluence-publish'
+            id = 'dev.vspex.confluence-publish'
             displayName = 'Confluence Publisher'
             description = 'Gradle plugin that publishes Markdown documentation from the project into the Confluence wiki. It renders Mermaid diagrams to images and supports page hierarchy, attachments, labels, and incremental publishing of only changed pages.'
             tags = ['documentation']
-            implementationClass = 'com.wiki.mark.gradle.ConfluencePublishPlugin'
+            implementationClass = 'dev.vspex.wiki.mark.gradle.ConfluencePublishPlugin'
             compatibility(it) {
                 features {
                     configurationCache = true
