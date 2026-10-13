@@ -174,18 +174,13 @@ public class InlineRenderer {
           if (LinkResolver.isLocalRef(src)) {
             rememberAttachment(src);
             String align = imageAlign.isEmpty() ? "" : " ac:align=\"" + imageAlign + "\"";
-            int[] fitted = ImageSizer.fittedSize(src, imageBaseDir, imageMaxWidth, imageMaxHeight);
-            String width = fitted == null ? "" : " ac:width=\"" + fitted[0] + "\"";
-            String height = fitted == null ? "" : " ac:height=\"" + fitted[1] + "\"";
+            ImageSizer.FittedSize fitted =
+                ImageSizer.fittedSize(src, imageBaseDir, imageMaxWidth, imageMaxHeight);
+            String size =
+                fitted == null ? "" : " ac:" + fitted.attr() + "=\"" + fitted.pixels() + "\"";
             String filename = escapeAttr(LinkResolver.attachmentFilename(src));
             String out =
-                "<ac:image"
-                    + align
-                    + width
-                    + height
-                    + "><ri:attachment ri:filename=\""
-                    + filename
-                    + "\" />";
+                "<ac:image" + align + size + "><ri:attachment ri:filename=\"" + filename + "\" />";
             if (!alt.strip().isEmpty()) {
               out += "<ac:caption>" + escapeText(alt.strip()) + "</ac:caption>";
             }

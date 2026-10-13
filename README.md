@@ -4,7 +4,7 @@ Standalone Gradle plugin (Java 17) that renders `.mmd` diagrams to images and
 publishes `.md` pages to Confluence (Cloud / Data Center / Server v1 REST API).
 
 - Plugin id: `dev.vspex.confluence-publish`
-- Group: `dev.vspex`, version `0.2.0`
+- Group: `dev.vspex`, version `0.3.0`
 
 ## Requirements
 
@@ -32,7 +32,7 @@ pluginManagement {
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.2.0'
+  id 'dev.vspex.confluence-publish' version '0.3.0'
 }
 ```
 
@@ -57,7 +57,7 @@ Body text.
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.2.0'
+  id 'dev.vspex.confluence-publish' version '0.3.0'
 }
 
 confluence {
@@ -147,6 +147,9 @@ referenced as `diagrams/<name>.png` against local state. A custom diagram source
 directory or SVG references do not participate in this diagram-source digest.
 It does not track DSL changes, arbitrary attachment changes, or remote
 edits. Disable it or reset state when those changes should force selection.
+For example, after changing `imageHeight` run `confluenceResetState` before
+`confluencePublish`, otherwise pages whose Markdown is unchanged are skipped
+and keep the old image size.
 `changesOnly` instead compares a rendered-content hash recorded in the remote
 version message; attachments and labels are still synchronized for selected pages.
 Page state is saved only after the entire selected batch succeeds, never in preview.
@@ -229,7 +232,7 @@ appended after the configured `parents` list.
 | `Attachment` (repeatable) | `attachments` (list) | File/glob relative to the page directory; each pattern must match during publish. |
 | `Content-Appearance` | `content-appearance` | `full-width`, `fixed`, or `default`; effective default is `full-width`. |
 | `Image-Align` | `image-align` | `left`, `center`, or `right`. |
-| `Image-Width`, `Image-Height` | `image-width`, `image-height` | Positive pixel dimensions. |
+| `Image-Width`, `Image-Height` | `image-width`, `image-height` | Positive pixel caps for local PNG/SVG images, scaled proportionally; only the binding dimension is written to the page. |
 | `Layout`, `Sidebar` | `layout`, `sidebar` | `article` wraps published storage in two columns; sidebar is raw storage markup. Other layouts leave storage unchanged. |
 | `Emoji` | `emoji` | Passed with page updates. |
 | `Synchronized` | `synchronized` | `false` skips the page in compile and publish. |
@@ -274,7 +277,7 @@ offline verification during `check`, and PNG diagrams. Apply `base` to supply
 ```groovy
 plugins {
   id 'base'
-  id 'dev.vspex.confluence-publish' version '0.2.0'
+  id 'dev.vspex.confluence-publish' version '0.3.0'
 }
 
 confluence {
@@ -344,8 +347,8 @@ unless a fallback is described. Boolean defaults are `false`.
 | `space` | String, `''` | Fallback space key for pages. |
 | `pagesDir` | Directory, `documentation/wiki` | Base directory for page discovery. |
 | `pageIncludes` | List of strings, `['**/*.md']` | Paths/globs relative to `pagesDir`, deduplicated and sorted. |
-| `imageHeight` | String, `''` | Positive pixel height; page header wins. |
-| `imageWidth` | String, `''` | Positive pixel width; page header wins. |
+| `imageHeight` | String, `''` | Max pixel height cap for local PNG/SVG images, scaled proportionally; page header wins. Only the binding dimension is written to the page. |
+| `imageWidth` | String, `''` | Max pixel width cap for local PNG/SVG images, scaled proportionally; page header wins. Only the binding dimension is written to the page. |
 | `imageAlign` | String, `''` | `left`, `center`, or `right`; page header wins. |
 | `contentAppearance` | String, `''` | `full-width`, `fixed`, or `default`; header wins, otherwise `full-width`. |
 | `titleFromH1` | Boolean, `false` | Derive a missing title from the first H1 outside code fences. |

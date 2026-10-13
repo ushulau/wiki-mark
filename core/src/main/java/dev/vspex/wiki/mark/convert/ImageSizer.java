@@ -1,6 +1,7 @@
 package dev.vspex.wiki.mark.convert;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CharsetDecoder;
@@ -16,11 +17,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * SVG intrinsic-size reading and max-box fitting.
+ * PNG/SVG intrinsic-size reading and max-box fitting.
  *
- * <p>Direct port of {@code _svg_intrinsic_size} and {@code _InlineRenderer._fitted_size} from
- * {@code mark.converter}. Only {@code .svg} refs are ever sized; anything else (and any SVG whose
- * size can't be read) renders at natural size.
+ * <p>Direct port of {@code _intrinsic_size} and {@code _InlineRenderer._fitted_size} from {@code
+ * mark.converter}. Only {@code .png} and {@code .svg} refs are ever sized; anything else (and any
+ * image whose size can't be read) renders at natural size.
+ *
+ * <p>Only the binding dimension is emitted as a single {@code ac:width} or {@code ac:height}
+ * attribute. Setting both makes Confluence build a server-side thumbnail at that size, which
+ * silently fails and hides the image; with one attribute the browser scales the other dimension,
+ * which stays within its own cap by construction.
  */
 public final class ImageSizer {
   private static final Pattern SVG_TAG_RE =
@@ -36,8 +42,16 @@ public final class ImageSizer {
 
   private ImageSizer() {}
 
-  /** An SVG's own (width, height) in px. */
+  /** An image's own (width, height) in px. */
   record IntrinsicSize(double width, double height) {}
+
+  /**
+   * The single binding dimension to write as {@code ac:width} or {@code ac:height}.
+   *
+   * @param attr either {@code "width"} or {@code "height"}
+   * @param pixels the capped pixel value of the binding dimension
+   */
+  record FittedSize(String attr, int pixels) {}
 
   /**
    * Return an SVG's own size in px, or null if unavailable.
@@ -82,19 +96,67 @@ public final class ImageSizer {
   }
 
   /**
-   * Scale an SVG's intrinsic size down to fit the max box, if needed.
+   * Return a PNG's own size in px, or null if unavailable.
    *
-   * <p>Preserves aspect ratio and never upscales. Returns null if there is no max box configured,
-   * the ref isn't an SVG, or its size can't be determined.
+   * <p>Reads the first 24 bytes: the 8-byte PNG signature, the 4-byte chunk length, the {@code
+   * IHDR} tag, then width and height as unsigned big-endian ints.
    */
-  static int[] fittedSize(String src, String baseDir, double maxWidth, double maxHeight) {
+  static IntrinsicSize pngIntrinsicSize(Path path) {
+    final byte[] header;
+    try (InputStream in = Files.newInputStream(path)) {
+      header = in.readNBytes(24);
+    } catch (IOException e) {
+      return null;
+    }
+    if (header.length < 24) {
+      return null;
+    }
+    byte[] signature = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    for (int i = 0; i < signature.length; i++) {
+      if (header[i] != signature[i]) {
+        return null;
+      }
+    }
+    if (header[12] != 0x49 || header[13] != 0x48 || header[14] != 0x44 || header[15] != 0x52) {
+      return null;
+    }
+    ByteBuffer buf = ByteBuffer.wrap(header);
+    long width = buf.getInt(16) & 0xFFFFFFFFL;
+    long height = buf.getInt(20) & 0xFFFFFFFFL;
+    return new IntrinsicSize(width, height);
+  }
+
+  /**
+   * Return a local image's own size in px, or null if unavailable.
+   *
+   * <p>Dispatches on the lowercased file name: {@code .svg} to {@link #svgIntrinsicSize}, {@code
+   * .png} to {@link #pngIntrinsicSize}; any other extension returns null.
+   */
+  static IntrinsicSize intrinsicSize(Path path) {
+    Path fileName = path.getFileName();
+    String name =
+        (fileName == null ? path.toString() : fileName.toString()).toLowerCase(Locale.ROOT);
+    if (name.endsWith(".svg")) {
+      return svgIntrinsicSize(path);
+    }
+    if (name.endsWith(".png")) {
+      return pngIntrinsicSize(path);
+    }
+    return null;
+  }
+
+  /**
+   * Scale a PNG/SVG's intrinsic size down to fit the max box, if needed.
+   *
+   * <p>Never upscales. Returns the binding dimension only (the one with the smaller scale factor;
+   * width wins ties), or null if there is no max box configured, the ref isn't a PNG or SVG, its
+   * size can't be determined, or it already fits.
+   */
+  static FittedSize fittedSize(String src, String baseDir, double maxWidth, double maxHeight) {
     if (!(maxWidth != 0.0 || maxHeight != 0.0)) {
       return null;
     }
-    if (!src.toLowerCase(Locale.ROOT).endsWith(".svg")) {
-      return null;
-    }
-    IntrinsicSize size = svgIntrinsicSize(Paths.get(LinkResolver.normalizeJoin(baseDir, src)));
+    IntrinsicSize size = intrinsicSize(Paths.get(LinkResolver.normalizeJoin(baseDir, src)));
     if (size == null) {
       return null;
     }
@@ -104,16 +166,25 @@ public final class ImageSizer {
       return null;
     }
     double scale = 1.0;
+    String attr = null;
+    double bound = 0.0;
     if (maxWidth != 0.0 && width > maxWidth) {
-      scale = Math.min(scale, maxWidth / width);
+      scale = maxWidth / width;
+      attr = "width";
+      bound = width;
     }
     if (maxHeight != 0.0 && height > maxHeight) {
-      scale = Math.min(scale, maxHeight / height);
+      double heightScale = maxHeight / height;
+      if (attr == null || heightScale < scale) {
+        scale = heightScale;
+        attr = "height";
+        bound = height;
+      }
     }
-    if (scale >= 1.0) {
+    if (attr == null) {
       return null;
     }
     // Python round() is banker's rounding (half to even), like Math.rint.
-    return new int[] {(int) Math.rint(width * scale), (int) Math.rint(height * scale)};
+    return new FittedSize(attr, (int) Math.rint(bound * scale));
   }
 }

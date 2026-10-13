@@ -1,6 +1,7 @@
 package dev.vspex.wiki.mark.convert;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -157,6 +158,17 @@ class ConverterTest {
             + "\"><rect /></svg>");
   }
 
+  private static void writePng(Path tmpDir, String name, int width, int height) throws Exception {
+    java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(29);
+    buf.put(new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+    buf.put(new byte[] {0x00, 0x00, 0x00, 0x0D});
+    buf.put(new byte[] {0x49, 0x48, 0x44, 0x52});
+    buf.putInt(width);
+    buf.putInt(height);
+    buf.put(new byte[5]);
+    Files.write(tmpDir.resolve(name), buf.array());
+  }
+
   @Test
   void test_oversized_svg_is_scaled_down_proportionally(@TempDir Path tmp) throws Exception {
     writeSvg(tmp, "big.svg", 1000, 500);
@@ -168,9 +180,108 @@ class ConverterTest {
               o.imageMaxHeight = "400";
               o.imageBaseDir = tmp.toString();
             });
-    // 1000x500 constrained to 400x400 -> width is the binding dimension.
-    assertTrue(result.storage().contains("<ac:image ac:width=\"400\" ac:height=\"200\">"));
+    // 1000x500 constrained to 400x400 -> width is the binding dimension; only it is emitted.
+    assertTrue(result.storage().contains("<ac:image ac:width=\"400\">"));
+    assertFalse(result.storage().contains("ac:height"));
     assertEquals(List.of("big.svg"), result.attachments());
+  }
+
+  @Test
+  void test_oversized_svg_scaled_by_height_sets_only_height(@TempDir Path tmp) throws Exception {
+    writeSvg(tmp, "tall.svg", 500, 1000);
+    RenderResult result =
+        render(
+            "![](tall.svg)\n",
+            o -> {
+              o.imageMaxWidth = "400";
+              o.imageMaxHeight = "400";
+              o.imageBaseDir = tmp.toString();
+            });
+    assertTrue(result.storage().contains("<ac:image ac:height=\"400\">"));
+    assertFalse(result.storage().contains("ac:width"));
+  }
+
+  @Test
+  void test_oversized_png_scaled_by_width_sets_only_width(@TempDir Path tmp) throws Exception {
+    writePng(tmp, "big.png", 1000, 500);
+    RenderResult result =
+        render(
+            "![](big.png)\n",
+            o -> {
+              o.imageMaxWidth = "400";
+              o.imageBaseDir = tmp.toString();
+            });
+    assertTrue(result.storage().contains("<ac:image ac:width=\"400\">"));
+    assertFalse(result.storage().contains("ac:height"));
+    assertEquals(List.of("big.png"), result.attachments());
+  }
+
+  @Test
+  void test_oversized_png_scaled_by_height_sets_only_height(@TempDir Path tmp) throws Exception {
+    writePng(tmp, "tall.png", 1122, 3466);
+    RenderResult result =
+        render(
+            "![](tall.png)\n",
+            o -> {
+              o.imageMaxHeight = "900";
+              o.imageBaseDir = tmp.toString();
+            });
+    assertTrue(result.storage().contains("<ac:image ac:height=\"900\">"));
+    assertFalse(result.storage().contains("ac:width"));
+  }
+
+  @Test
+  void test_both_caps_emit_only_more_restrictive_dimension(@TempDir Path tmp) throws Exception {
+    writePng(tmp, "wide.png", 1568, 1000);
+    RenderResult result =
+        render(
+            "![](wide.png)\n",
+            o -> {
+              o.imageMaxWidth = "400";
+              o.imageMaxHeight = "900";
+              o.imageBaseDir = tmp.toString();
+            });
+    // width factor 400/1568 < height factor 900/1000 -> width binds.
+    assertTrue(result.storage().contains("<ac:image ac:width=\"400\">"));
+    assertFalse(result.storage().contains("ac:height"));
+  }
+
+  @Test
+  void test_undersized_png_is_left_alone(@TempDir Path tmp) throws Exception {
+    writePng(tmp, "small.png", 100, 50);
+    RenderResult result =
+        render(
+            "![](small.png)\n",
+            o -> {
+              o.imageMaxWidth = "400";
+              o.imageMaxHeight = "400";
+              o.imageBaseDir = tmp.toString();
+            });
+    assertEquals(
+        "<p><ac:image><ri:attachment ri:filename=\"small.png\" /></ac:image></p>",
+        result.storage());
+  }
+
+  @Test
+  void test_corrupt_png_and_unsupported_format_are_left_alone(@TempDir Path tmp) throws Exception {
+    Files.write(tmp.resolve("bad.png"), new byte[] {0x00, 0x01, 0x02, 0x03});
+    Files.write(tmp.resolve("photo.jpg"), new byte[] {0x00, 0x01, 0x02, 0x03});
+    RenderResult corrupt =
+        render(
+            "![](bad.png)\n",
+            o -> {
+              o.imageMaxWidth = "400";
+              o.imageBaseDir = tmp.toString();
+            });
+    assertTrue(corrupt.storage().contains("<ac:image>"));
+    RenderResult unsupported =
+        render(
+            "![](photo.jpg)\n",
+            o -> {
+              o.imageMaxWidth = "400";
+              o.imageBaseDir = tmp.toString();
+            });
+    assertTrue(unsupported.storage().contains("<ac:image>"));
   }
 
   @Test
@@ -201,11 +312,12 @@ class ConverterTest {
               o.imageMaxWidth = "400";
               o.imageBaseDir = tmp.toString();
             });
-    assertTrue(result.storage().contains("<ac:image ac:width=\"400\" ac:height=\"200\">"));
+    assertTrue(result.storage().contains("<ac:image ac:width=\"400\">"));
+    assertFalse(result.storage().contains("ac:height"));
   }
 
   @Test
-  void test_unreadable_or_non_svg_image_is_left_alone(@TempDir Path tmp) {
+  void test_unreadable_or_unsupported_image_is_left_alone(@TempDir Path tmp) {
     RenderResult result =
         render(
             "![](missing.svg)\n",
