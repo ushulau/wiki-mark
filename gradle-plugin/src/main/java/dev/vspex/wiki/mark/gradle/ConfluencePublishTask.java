@@ -333,15 +333,21 @@ public abstract class ConfluencePublishTask extends DefaultTask {
             getInsecureSkipTlsVerify().getOrElse(false),
             log);
 
+    // Links resolve against every page, while only the selection syncs: changed-only runs
+    // keep working links to unchanged pages.
+    List<Path> universe =
+        SyncSupport.resolveFiles(pagesDir, getPageIncludes().getOrElse(List.of()));
+    Map<String, String> pageTitles = PageSyncer.buildPageTitleMap(universe, opts);
+
     if (getPreview().getOrElse(false)) {
       opts.dryRun = true;
-      PageSyncer.run(files, opts, client, log).throwIfFailed();
+      PageSyncer.run(files, universe, opts, client, log).throwIfFailed();
       return;
     }
-    for (String warning : SyncSupport.outOfBatchWarnings(pagesDir, files)) {
+    for (String warning : SyncSupport.unresolvedLinkWarnings(pagesDir, files, pageTitles)) {
       log.warn(warning);
     }
-    RunReport report = PageSyncer.run(files, opts, client, log);
+    RunReport report = PageSyncer.run(files, universe, opts, client, log);
     if (report.failures().isEmpty()) {
       writeState(pagesDir, files);
     }

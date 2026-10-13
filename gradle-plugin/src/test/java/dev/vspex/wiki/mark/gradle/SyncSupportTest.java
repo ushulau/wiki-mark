@@ -160,31 +160,45 @@ class SyncSupportTest {
   }
 
   @Test
-  void outOfBatchWarnsForUnselectedExistingTargets() throws Exception {
-    write("01-a.md", "See [b](02-b.md) and [c](03-c.md) and [x](99-x.md).\n");
+  void unresolvedLinksWarnForMissingTargets() throws Exception {
+    write("01-a.md", "See [b](02-b.md) and [x](99-x.md).\n");
     write("02-b.md", "b");
 
-    List<String> warnings = SyncSupport.outOfBatchWarnings(dir, List.of(dir.resolve("01-a.md")));
+    Map<String, String> titles = Map.of(abs(dir, "02-b.md"), "B");
+    List<String> warnings =
+        SyncSupport.unresolvedLinkWarnings(dir, List.of(dir.resolve("01-a.md")), titles);
 
     assertEquals(1, warnings.size());
-    assertTrue(warnings.get(0).contains("01-a.md links to 02-b.md"), warnings.get(0));
-    assertTrue(!warnings.get(0).contains("03-c.md"), warnings.get(0));
-    assertTrue(!warnings.get(0).contains("99-x.md"), warnings.get(0));
+    assertTrue(warnings.get(0).contains("01-a.md links to 99-x.md"), warnings.get(0));
+    assertTrue(warnings.get(0).contains("does not exist"), warnings.get(0));
   }
 
   @Test
-  void outOfBatchWarnsOnlyWhenTargetExists() throws Exception {
+  void unresolvedLinksSkipMappedTargets() throws Exception {
     write("01-a.md", "See [b](02-b.md).\n");
     write("02-b.md", "b");
 
-    List<String> warnings = SyncSupport.outOfBatchWarnings(dir, List.of(dir.resolve("01-a.md")));
+    Map<String, String> titles = Map.of(abs(dir, "02-b.md"), "B");
+
+    assertTrue(
+        SyncSupport.unresolvedLinkWarnings(dir, List.of(dir.resolve("01-a.md")), titles).isEmpty());
+  }
+
+  @Test
+  void unresolvedLinksWarnForUnmappableTargets() throws Exception {
+    write("01-a.md", "See [b](02-b.md).\n");
+    write("02-b.md", "b"); // exists but absent from the map (unparseable headers)
+
+    List<String> warnings =
+        SyncSupport.unresolvedLinkWarnings(dir, List.of(dir.resolve("01-a.md")), Map.of());
 
     assertEquals(1, warnings.size());
     assertTrue(warnings.get(0).contains("01-a.md links to 02-b.md"), warnings.get(0));
+    assertTrue(warnings.get(0).contains("cannot be resolved"), warnings.get(0));
+  }
 
-    assertTrue(
-        SyncSupport.outOfBatchWarnings(dir, List.of(dir.resolve("01-a.md"), dir.resolve("02-b.md")))
-            .isEmpty());
+  private static String abs(Path dir, String relative) {
+    return dir.resolve(relative).toAbsolutePath().normalize().toString();
   }
 
   @Test

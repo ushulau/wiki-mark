@@ -545,6 +545,37 @@ class PageSyncerTest {
   }
 
   @Test
+  void linksResolveAgainstUniverseNotSelection(@TempDir Path tmp) throws Exception {
+    Path a =
+        writeDoc(
+            tmp, "01-a.md", "<!-- Space: DOC -->\n<!-- Title: Alpha -->\n\nSee [b](02-b.md).\n");
+    Path b = writeDoc(tmp, "02-b.md", "<!-- Space: DOC -->\n<!-- Title: Beta -->\n\nBody.\n");
+    SyncOptions opts = new SyncOptions();
+    opts.space = "DOC";
+
+    FakePageStore client = new FakePageStore();
+    PageSyncer.run(List.of(a), List.of(a, b), opts, client, new RecordingLog()).throwIfFailed();
+
+    assertEquals(1, client.count("create"));
+    assertTrue(storageOf(client, "Alpha").contains("ri:content-title=\"Beta\""));
+
+    // Same-batch resolving (the old path) leaves the link dead.
+    FakePageStore narrow = new FakePageStore();
+    PageSyncer.run(List.of(a), opts, narrow, new RecordingLog()).throwIfFailed();
+    assertTrue(!storageOf(narrow, "Alpha").contains("ri:content-title"));
+  }
+
+  private static String storageOf(FakePageStore client, String title) {
+    for (Map<String, Object> page : client.pages.values()) {
+      if (title.equals(page.get("title"))) {
+        Map<?, ?> body = (Map<?, ?>) page.get("body");
+        return (String) ((Map<?, ?>) body.get("storage")).get("value");
+      }
+    }
+    throw new AssertionError("no created page titled " + title);
+  }
+
+  @Test
   void declaredParentsDisablePathParents(@TempDir Path tmp) throws Exception {
     Path page =
         writeDoc(

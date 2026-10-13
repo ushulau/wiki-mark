@@ -269,14 +269,13 @@ final class SyncSupport {
   }
 
   /**
-   * Warns for each selected page linking to an {@code NN-*.md} file that exists under {@code
-   * pagesDir} but is not selected: the cross-file link map covers the selected batch only.
+   * Warns for each selected page linking to an {@code NN-*.md} file missing from {@code
+   * pageTitles}: the target does not exist under {@code pagesDir}, or its title cannot be resolved.
+   * Targets outside the sync selection still resolve (the map covers every page), so they never
+   * warn.
    */
-  static List<String> outOfBatchWarnings(Path pagesDir, List<Path> selected) throws IOException {
-    Set<String> keys = new LinkedHashSet<>();
-    for (Path file : selected) {
-      keys.add(relativeKey(pagesDir, file));
-    }
+  static List<String> unresolvedLinkWarnings(
+      Path pagesDir, List<Path> selected, Map<String, String> pageTitles) throws IOException {
     List<String> warnings = new ArrayList<>();
     for (Path file : selected) {
       Set<String> targets = new LinkedHashSet<>();
@@ -285,15 +284,22 @@ final class SyncSupport {
         targets.add(links.group(1));
       }
       for (String target : targets) {
-        if (!keys.contains(target) && Files.isRegularFile(pagesDir.resolve(target))) {
-          warnings.add(
-              "WARNING: "
-                  + relativeKey(pagesDir, file)
-                  + " links to "
-                  + target
-                  + ", which is not being published; the link will be dead."
-                  + " Run a full confluencePublish after adding/renaming pages.");
+        String absolute = pagesDir.resolve(target).toAbsolutePath().normalize().toString();
+        if (pageTitles.containsKey(absolute)) {
+          continue;
         }
+        String reason =
+            Files.isRegularFile(pagesDir.resolve(target))
+                ? "whose title cannot be resolved; check its headers"
+                : "which does not exist under '" + pagesDir + "'";
+        warnings.add(
+            "WARNING: "
+                + relativeKey(pagesDir, file)
+                + " links to "
+                + target
+                + ", "
+                + reason
+                + "; the link will be dead.");
       }
     }
     return warnings;

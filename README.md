@@ -120,7 +120,7 @@ empty property overrides the environment variable and fails publishing.
 |---|---|
 | `confluenceRenderDiagrams` | `.mmd` → images via a pinned mermaid-cli container. Skips when up-to-date (sources, config, and the `--only` selection are all tracked). `--only=<name>` (repeatable, `.mmd` suffix optional) renders selected diagrams. |
 | `confluenceCompile` | Runs render first so images are fresh (a no-op unless conversion is enabled), then checks all pages offline to `build/confluence/storage`. No network, no token. Joins `check` only when `verifyOnCheck = true`. |
-| `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` (or `onlyChanged = true` in config) publishes only pages whose digest differs from the state file; `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
+| `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` (or `onlyChanged = true` in config) publishes only pages whose digest differs from the state file (cross-page links still resolve against all pages); `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
 | `confluenceResetState` | Deletes the change-tracking state (`.gradle/confluence-publish/state.properties`, which survives `clean`; a legacy `documentation/wiki/.published-hashes` is imported once). |
 
 Task options belong to the task immediately preceding them:

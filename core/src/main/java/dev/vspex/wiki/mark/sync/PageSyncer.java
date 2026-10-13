@@ -741,7 +741,8 @@ public final class PageSyncer {
   /**
    * Syncs a batch of files as one run (one title map, sequential), collecting per-file failures. An
    * empty selection succeeds with an informational message. Per-file failures become {@code FAILED}
-   * results; the caller fails the run with {@link RunReport#throwIfFailed}.
+   * results; the caller fails the run with {@link RunReport#throwIfFailed}. Cross-file links
+   * resolve against the batch itself.
    *
    * @param files the files to sync
    * @param opts the sync options
@@ -750,12 +751,37 @@ public final class PageSyncer {
    * @return the run report
    */
   public static RunReport run(List<Path> files, SyncOptions opts, PageStore client, Log log) {
+    return run(files, buildPageTitleMap(files, opts), opts, client, log);
+  }
+
+  /**
+   * Syncs {@code files}, resolving cross-file links against {@code linkUniverse} instead of the
+   * batch. Lets changed-only runs keep working links to unchanged pages: the map covers every page
+   * while only the selection syncs.
+   *
+   * @param files the files to sync
+   * @param linkUniverse the files to resolve link titles from
+   * @param opts the sync options
+   * @param client the page store, or null for the compile branch
+   * @param log the log
+   * @return the run report
+   */
+  public static RunReport run(
+      List<Path> files, List<Path> linkUniverse, SyncOptions opts, PageStore client, Log log) {
+    return run(files, buildPageTitleMap(linkUniverse, opts), opts, client, log);
+  }
+
+  private static RunReport run(
+      List<Path> files,
+      Map<String, String> pageTitles,
+      SyncOptions opts,
+      PageStore client,
+      Log log) {
     List<SyncResult> results = new ArrayList<>();
     if (files.isEmpty()) {
       log.info("No changed pages to publish.");
       return new RunReport(results);
     }
-    Map<String, String> pageTitles = buildPageTitleMap(files, opts);
     for (Path file : files) {
       try {
         results.add(syncFile(file, opts, client, pageTitles, log));

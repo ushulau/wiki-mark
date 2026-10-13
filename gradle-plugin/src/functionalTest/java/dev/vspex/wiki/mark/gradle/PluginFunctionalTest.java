@@ -164,6 +164,21 @@ class PluginFunctionalTest {
     assertFalse(result.getOutput().contains("01-same.md"), result.getOutput());
   }
 
+  @Test
+  void changedRunResolvesLinksToUnselectedPages() throws Exception {
+    writeBuild("  baseUrl = 'https://wiki.example.invalid'\n  onlyChanged = true\n");
+    writePage(
+        "01-a.md",
+        "<!-- Space: DEMO -->\n<!-- Title: A -->\n\nSee [b](02-b.md) and [x](99-x.md).\n");
+    writePage("02-b.md", "<!-- Space: DEMO -->\n<!-- Title: B -->\n\nB.\n");
+    primeState("02-b.md");
+
+    BuildResult result = runner("confluencePublish", "-Pconfluence.token=dummy").buildAndFail();
+
+    assertTrue(result.getOutput().contains("links to 99-x.md"), result.getOutput());
+    assertTrue(!result.getOutput().contains("links to 02-b.md"), result.getOutput());
+  }
+
   /** Writes digests for the given pages so changed-selection treats them as unchanged. */
   private void primeState(String... relative) throws Exception {
     Path pagesDir = projectDir.resolve("documentation/wiki");
