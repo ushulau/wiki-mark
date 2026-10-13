@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
  */
 public final class Main {
   /** Must match the project version in the root build file. */
-  static final String VERSION = "0.3.0";
+  static final String VERSION = "0.3.1";
 
   private static final String USAGE =
       """

@@ -4,7 +4,7 @@ Standalone Gradle plugin (Java 17) that renders `.mmd` diagrams to images and
 publishes `.md` pages to Confluence (Cloud / Data Center / Server v1 REST API).
 
 - Plugin id: `dev.vspex.confluence-publish`
-- Group: `dev.vspex`, version `0.3.0`
+- Group: `dev.vspex`, version `0.3.1`
 
 ## Requirements
 
@@ -32,7 +32,7 @@ pluginManagement {
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.3.0'
+  id 'dev.vspex.confluence-publish' version '0.3.1'
 }
 ```
 
@@ -57,7 +57,7 @@ Body text.
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.3.0'
+  id 'dev.vspex.confluence-publish' version '0.3.1'
 }
 
 confluence {
@@ -277,7 +277,7 @@ offline verification during `check`, and PNG diagrams. Apply `base` to supply
 ```groovy
 plugins {
   id 'base'
-  id 'dev.vspex.confluence-publish' version '0.3.0'
+  id 'dev.vspex.confluence-publish' version '0.3.1'
 }
 
 confluence {
