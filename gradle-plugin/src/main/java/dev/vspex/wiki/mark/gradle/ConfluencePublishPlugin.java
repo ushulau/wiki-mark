@@ -20,6 +20,28 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
         project.getExtensions().create("confluence", ConfluenceExtension.class);
     defaults(project, extension);
 
+    project
+        .getTasks()
+        .register(
+            "confluenceImport",
+            ConfluenceImportTask.class,
+            task -> {
+              task.setGroup("documentation");
+              task.setDescription("Imports one Confluence page as Markdown under documents/wiki");
+              task.getBaseUrl().convention(extension.getBaseUrl());
+              task.getAuthToken().convention(extension.getAuthToken());
+              task.getUsername().convention(extension.getUsername());
+              task.getTrustStore().convention(extension.getTrustStore());
+              task.getTrustStorePassword().convention(extension.getTrustStorePassword());
+              task.getInsecureSkipTlsVerify().convention(extension.getInsecureSkipTlsVerify());
+              task.getProjectDir().convention(project.getLayout().getProjectDirectory());
+              task.getPageId().convention("");
+              task.getPageUrl().convention("");
+              task.getOutput().convention("");
+              task.getOverwrite().convention(false);
+              task.getPreview().convention(false);
+            });
+
     TaskProvider<ConfluenceRenderDiagramsTask> render =
         project
             .getTasks()

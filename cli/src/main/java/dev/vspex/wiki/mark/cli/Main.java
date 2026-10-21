@@ -22,7 +22,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Thin stdlib-only command line over core, for parity debugging against the Python tool.
+ * Thin stdlib-only command line over core, for publishing and read-only page imports.
  *
  * <p>Not the primary interface (that is the Gradle plugin); ships optionally. Only the retained
  * options exist here: no config file, no {@code MARK_*} variables, no {@code target-url}, no
@@ -32,11 +32,14 @@ import java.util.regex.Pattern;
  */
 public final class Main {
   /** Must match the project version in the root build file. */
-  static final String VERSION = "0.3.1";
+  static final String VERSION = "0.4.0";
 
   private static final String USAGE =
       """
       Usage: mark [sync] --files PATTERN... [options]
+             mark import (--page-id ID | --page-url URL) [options]
+
+      Use mark import --help for the read-only Markdown import options.
 
       Sync Markdown files to Confluence. Options:
         --files, -f PATTERN...     files to sync (glob patterns allowed, quote them)
@@ -87,6 +90,10 @@ public final class Main {
 
   /** Runs the CLI; returns the process exit code. Separated from {@code main} for tests. */
   static int run(String[] args, PrintStream out, PrintStream err, Map<String, String> env) {
+    if (args.length > 0 && args[0].equals("import")) {
+      return ImportCommand.run(
+          java.util.Arrays.copyOfRange(args, 1, args.length), out, err, env, Path.of(""));
+    }
     final CliConfig config;
     try {
       config = parse(List.of(args));
@@ -130,7 +137,7 @@ public final class Main {
     }
   }
 
-  private static PageStore connect(CliConfig config, Map<String, String> env) {
+  static ConfluenceClient connect(CliConfig config, Map<String, String> env) {
     if (config.baseUrl.isEmpty()) {
       throw new SyncException("confluence base URL is required (pass --base-url)");
     }

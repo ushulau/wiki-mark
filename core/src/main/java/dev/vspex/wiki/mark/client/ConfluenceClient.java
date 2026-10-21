@@ -82,6 +82,15 @@ public class ConfluenceClient implements PageStore {
   private volatile HttpClient http;
   private Sleeper sleeper = seconds -> Thread.sleep((long) (seconds * 1000));
   private boolean insecureWarned;
+  private boolean readOnlyImport;
+
+  /** Restricts a fresh client to GET requests and refuses automatic REST redirects. */
+  public ConfluenceClient forReadOnlyImport() {
+    if (http != null)
+      throw new IllegalStateException("Configure import mode before making requests");
+    readOnlyImport = true;
+    return this;
+  }
 
   /**
    * Creates a client. Options must be set before the first request.
@@ -239,6 +248,8 @@ public class ConfluenceClient implements PageStore {
   private HttpResponse<byte[]> sendOnce(
       String method, String url, byte[] body, Map<String, String> headers)
       throws IOException, InterruptedException {
+    if (readOnlyImport && !method.equals("GET"))
+      throw new ConfluenceException("Imports allow only GET requests");
     HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
     HttpRequest.BodyPublisher publisher = HttpRequest.BodyPublishers.noBody();
     if (body != null) {
@@ -694,6 +705,95 @@ public class ConfluenceClient implements PageStore {
   }
 
   /**
+   * Bounded import download: 50 MiB, 30 seconds per request, at most five redirects. Credentials
+   * are sent only to the configured origin; HTTPS CDN redirects are followed without credentials.
+   * Automatic redirects are deliberately disabled.
+   */
+  public byte[] downloadForImport(String download) {
+    URI base = URI.create(baseUrl);
+    URI target;
+    try {
+      if (download.isEmpty()) throw new IllegalArgumentException();
+      URI reference = URI.create(download);
+      String context = base.getPath().replaceAll("/$", "");
+      if (reference.isAbsolute() || download.startsWith("//")) target = base.resolve(reference);
+      else if (!context.isEmpty() && download.startsWith(context + "/"))
+        target = base.resolve(reference);
+      else target = URI.create(baseUrl + "/").resolve(download.replaceFirst("^/", ""));
+      if (!downloadOrigin(base, target)) throw new IllegalArgumentException();
+    } catch (IllegalArgumentException e) {
+      throw new ConfluenceException("Attachment download requires a same-site HTTP(S) URL");
+    }
+    HttpClient downloader = buildHttp(HttpClient.Redirect.NEVER);
+    boolean authenticated = true;
+    for (int hop = 0; hop <= 5; hop++) {
+      HttpResponse<byte[]> response = null;
+      for (int attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          var builder = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(30)).GET();
+          if (authenticated) authHeaders().forEach(builder::header);
+          response = downloader.send(builder.build(), info -> new LimitedBodySubscriber());
+        } catch (IOException e) {
+          // Do not retry size-limit failures, and never expose URL/query/body details.
+          if (attempt < maxRetries && !String.valueOf(e.getMessage()).contains("50 MiB")) {
+            nap("download attachment", Math.pow(2, attempt));
+            continue;
+          }
+          throw new ConfluenceException(
+              "Attachment download failed (30 second timeout or 50 MiB limit)");
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new ConfluenceException("Attachment download interrupted");
+        }
+        if (RETRY_STATUSES.contains(response.statusCode()) && attempt < maxRetries) {
+          nap("download attachment", Math.min(30, retryDelay(response.headers(), attempt)));
+          continue;
+        }
+        break;
+      }
+      int status = response.statusCode();
+      if (Set.of(301, 302, 303, 307, 308).contains(status)) {
+        try {
+          URI next = target.resolve(response.headers().firstValue("Location").orElseThrow());
+          if (next.getFragment() != null) throw new IllegalArgumentException();
+          boolean same = downloadOrigin(base, next);
+          if (!same
+              && (!"https".equalsIgnoreCase(next.getScheme())
+                  || next.getHost() == null
+                  || next.getUserInfo() != null)) throw new IllegalArgumentException();
+          if ("https".equalsIgnoreCase(target.getScheme())
+              && !"https".equalsIgnoreCase(next.getScheme())) throw new IllegalArgumentException();
+          authenticated = authenticated && same;
+          target = next;
+          continue;
+        } catch (RuntimeException e) {
+          throw new ConfluenceException("Attachment redirect route is unsupported");
+        }
+      }
+      if (status != 200)
+        throw new ConfluenceException("Download attachment: HTTP " + status, status, "", "");
+      return response.body();
+    }
+    throw new ConfluenceException("Attachment download exceeded five redirects");
+  }
+
+  private static boolean downloadOrigin(URI base, URI target) {
+    if (target.getHost() == null || target.getUserInfo() != null || target.getFragment() != null)
+      return false;
+    int basePort =
+        base.getPort() >= 0
+            ? base.getPort()
+            : (base.getScheme().equalsIgnoreCase("https") ? 443 : 80);
+    int targetPort =
+        target.getPort() >= 0
+            ? target.getPort()
+            : (target.getScheme().equalsIgnoreCase("https") ? 443 : 80);
+    return base.getScheme().equalsIgnoreCase(target.getScheme())
+        && base.getHost().equalsIgnoreCase(target.getHost())
+        && basePort == targetPort;
+  }
+
+  /**
    * Uploads {@code localPath} unless an identical attachment exists. Returns the remote info plus
    * whether anything changed; a failed download counts as a mismatch, so the file is replaced.
    */
@@ -868,11 +968,15 @@ public class ConfluenceClient implements PageStore {
   }
 
   private HttpClient buildHttp() {
+    return buildHttp(readOnlyImport ? HttpClient.Redirect.NEVER : HttpClient.Redirect.NORMAL);
+  }
+
+  private HttpClient buildHttp(HttpClient.Redirect redirects) {
     HttpClient.Builder builder =
         HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(CONNECT_TIMEOUT)
-            .followRedirects(HttpClient.Redirect.NORMAL);
+            .followRedirects(redirects);
     if (insecureSkipTlsVerify) {
       if (!insecureWarned) {
         insecureWarned = true;

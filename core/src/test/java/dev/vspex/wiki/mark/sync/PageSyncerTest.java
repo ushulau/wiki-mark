@@ -32,6 +32,30 @@ class PageSyncerTest {
   static final String DOC = "<!-- Space: DOC -->\n<!-- Title: Hello -->\n\nSome body.\n";
   static final String ROCKET = new String(Character.toChars(0x1F680));
 
+  @Test
+  void importedAssetPathsPublishWithoutAttachReferenced(@TempDir Path tmp) throws Exception {
+    Files.createDirectories(tmp.resolve("My Guide.assets"));
+    Files.write(tmp.resolve("My Guide.assets/att9-café.png"), new byte[] {1});
+    Files.writeString(tmp.resolve("My Guide.assets/att8-file.pdf"), "pdf");
+    Path document =
+        writeDoc(
+            tmp,
+            "guide.md",
+            "---\nspace: 'DOC'\ntitle: 'Imported'\nattachments:\n"
+                + "  - 'My Guide.assets/att8-file.pdf'\n---\n\n"
+                + "![Image](My%20Guide.assets/att9-caf%C3%A9.png)\n\n[Download](My%20Guide.assets/att8-file.pdf)\n");
+    var client = new FakePageStore();
+    var log = new RecordingLog();
+    sync(document, new SyncOptions(), client, log);
+    assertEquals(2, client.count("attach"));
+    var remote = client.findPage("DOC", "Imported", "page");
+    Map<?, ?> body = (Map<?, ?>) remote.get("body");
+    String storage = String.valueOf(((Map<?, ?>) body.get("storage")).get("value"));
+    assertTrue(storage.contains("ri:filename=\"att8-file.pdf\""), storage);
+    assertTrue(storage.contains("ri:filename=\"att9-café.png\""), storage);
+    assertFalse(log.warnContains("does not exist"));
+  }
+
   /** In-memory page store. Port of the {@code FakeClient} in {@code test_cli.py}. */
   static final class FakePageStore implements PageStore {
     final String base = "https://confluence.test";

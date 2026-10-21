@@ -37,7 +37,12 @@ public final class LinkResolver {
    * os.path.normpath(os.path.join(baseDir, ref))}.
    */
   static String normalizeJoin(String baseDir, String ref) {
-    return Path.of(baseDir).resolve(ref).normalize().toString();
+    return Path.of(baseDir).resolve(decodeLocalPath(ref)).normalize().toString();
+  }
+
+  /** Decodes the path component of a local Markdown URL; plus signs remain literal. */
+  public static String decodeLocalPath(String ref) {
+    return percentDecode(ref.split("#", 2)[0].split("\\?", 2)[0]);
   }
 
   /**

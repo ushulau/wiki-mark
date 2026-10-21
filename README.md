@@ -1,15 +1,19 @@
 # confluence-publish-gradle-plugin
 
 Standalone Gradle plugin (Java 17) that renders `.mmd` diagrams to images and
-publishes `.md` pages to Confluence (Cloud / Data Center / Server v1 REST API).
+publishes `.md` pages to Confluence and imports existing pages as Markdown
+(Cloud / Data Center / Server v1 REST API).
 
 - Plugin id: `dev.vspex.confluence-publish`
-- Group: `dev.vspex`, version `0.3.1`
+- Group: `dev.vspex`, version `0.4.0`
 
 ## Requirements
 
 - Gradle 8.5+ and JDK 17+ to use the plugin. Building this repository requires
   JDK 21 and dependency access; the wrapper uses Gradle 8.11.1 and emits Java 17 bytecode.
+  The Gradle daemon is pinned to Java 21 in `gradle/gradle-daemon-jvm.properties`;
+  `mise.toml` also selects Temurin 21 for the shell. Install it with `mise install`
+  if using mise, or install a JDK 21 discoverable by Gradle.
 - A container engine (`docker` or `podman`) on `PATH`, only if you enable
   diagram conversion.
 - A Confluence API token (Cloud: classic token, see below) or Personal Access
@@ -32,7 +36,7 @@ pluginManagement {
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.3.1'
+  id 'dev.vspex.confluence-publish' version '0.4.0'
 }
 ```
 
@@ -57,7 +61,7 @@ Body text.
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.3.1'
+  id 'dev.vspex.confluence-publish' version '0.4.0'
 }
 
 confluence {
@@ -110,7 +114,9 @@ Cloud vs Data Center:
 Safety rules, enforced by the plugin: the token is never logged, never
 appears in exception messages, and is excluded from up-to-date fingerprinting
 (`@Internal`). The trust-store password gets the same treatment. `preview`
-needs the token too (it resolves against the live wiki); `compile` never does.
+needs the token too (it resolves against the live wiki); `confluenceImport` also
+requires the token and read access to the selected page and its attachments.
+`compile` never needs a token.
 `confluence.token` is a Gradle project property, so it can also come from
 `gradle.properties`; a command-line `-P` value overrides that file. An explicitly
 empty property overrides the environment variable and fails publishing.
@@ -123,6 +129,7 @@ empty property overrides the environment variable and fails publishing.
 | `confluenceCompile` | Runs render first so images are fresh (a no-op unless conversion is enabled), then checks all pages offline to `build/confluence/storage`. No network, no token. Joins `check` only when `verifyOnCheck = true`. |
 | `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` (or `onlyChanged = true` in config) publishes only pages whose digest differs from the state file (cross-page links still resolve against all pages); `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
 | `confluenceResetState` | Deletes the change-tracking state (`.gradle/confluence-publish/state.properties`, which survives `clean`; a legacy `documentation/wiki/.published-hashes` is imported once). |
+| `confluenceImport` | Reads one existing page and saves Markdown under `documents/wiki`. Select `--page-id` or `--page-url`; optionally set `--output`, `--overwrite`, or `--preview`. Never wired into `build`/`check` or publishing. |
 
 Task options belong to the task immediately preceding them:
 
@@ -155,6 +162,57 @@ version message; attachments and labels are still synchronized for selected page
 Page state is saved only after the entire selected batch succeeds, never in preview.
 Resetting state clears both page and diagram hashes; remove a legacy
 `.published-hashes` file too if you want to prevent its reimport.
+
+## Import an existing Confluence page
+
+Use the same `confluence` connection and authentication settings as publishing.
+The page supplies its own space; setting `confluence.space` is optional for imports.
+
+```sh
+./gradlew confluenceImport --page-id=123456 --preview
+./gradlew confluenceImport --page-id=123456 --output=engineering/onboarding.md
+./gradlew confluenceImport --page-url="https://example.atlassian.net/wiki/spaces/ENG/pages/123456/Onboarding"
+./gradlew confluenceImport --page-id=123456 --output=engineering/onboarding.md --overwrite
+```
+
+On Windows, use `.\gradlew.bat`. Specify exactly one selector. Supported page URLs
+contain `/pages/<numeric-id>/...` or `viewpage.action?pageId=<numeric-id>` and must
+belong to the configured site and context path. For short links, use the page ID.
+
+The output is relative to the project owning the task. `--output` is a relative
+`.md` path under `documents/wiki`; by default the filename is
+`<sanitized-title>-<page-id>.md`. Absolute paths, traversal, reserved Windows names,
+and symlink/junction paths are rejected. Existing output files require `--overwrite`.
+`--preview` prints Markdown, planned paths, and warnings without creating files or
+downloading attachment bodies; collision checks still apply.
+
+Imports preserve supported text, headings, lists, code, and tables, download
+referenced attachments into `<document-stem>.assets/`, and rewrite their links.
+Page links remain remote. Metadata includes the original space, title, ancestors,
+labels, and explicit non-image attachments. A sibling `.confluence.json` manifest
+records the source page and version. Lossy conversions produce warnings and retain
+the original storage in a `.confluence-storage.xml` sidecar. Metadata that the
+existing parser cannot preserve, including embedded newlines, fails before writing.
+
+Confluence and local publishing state are read-only during import. Files are
+staged before committing, with rollback on replacement failures; Markdown is
+installed last. Downloads are limited to 50 MiB per asset and 200 MiB per import,
+with a 30-second request timeout and at most five redirects. HTTPS CDN redirects
+receive no credentials. External images are kept as URLs.
+
+Imports always use `documents/wiki`; publishing still defaults to
+`documentation/wiki`. To compile or explicitly publish imported documents, set:
+
+```groovy
+confluence {
+  pagesDir = layout.projectDirectory.dir('documents/wiki')
+}
+```
+
+Review the Markdown and warnings before publishing. Imports are snapshots; the
+manifest does not bind publishing to a page ID or merge remote edits. See the
+[import reference](docs/confluence-import.md) for conversion details, recovery,
+CLI usage, and limitations.
 
 ## Diagrams
 
@@ -229,7 +287,7 @@ appended after the configured `parents` list.
 | `Type` | `type` | REST content type, default `page`; support depends on the server. |
 | `Parent` (repeatable) | `parents` (list) | Parent chain; explicit parents suppress directory-derived parents. |
 | `Label` (repeatable) | `labels` (list) | Remote labels; replacement or append follows `appendLabels`. |
-| `Attachment` (repeatable) | `attachments` (list) | File/glob relative to the page directory; each pattern must match during publish. |
+| `Attachment` (repeatable) | `attachments` (list) | File/glob relative to the page directory; each pattern must match during publish. Matching local links become Confluence attachment links without requiring `attachReferenced`. |
 | `Content-Appearance` | `content-appearance` | `full-width`, `fixed`, or `default`; effective default is `full-width`. |
 | `Image-Align` | `image-align` | `left`, `center`, or `right`. |
 | `Image-Width`, `Image-Height` | `image-width`, `image-height` | Positive pixel caps for local PNG/SVG images, scaled proportionally; only the binding dimension is written to the page. |
@@ -277,7 +335,7 @@ offline verification during `check`, and PNG diagrams. Apply `base` to supply
 ```groovy
 plugins {
   id 'base'
-  id 'dev.vspex.confluence-publish' version '0.3.1'
+  id 'dev.vspex.confluence-publish' version '0.4.0'
 }
 
 confluence {
@@ -341,8 +399,8 @@ unless a fallback is described. Boolean defaults are `false`.
 
 | Property | Type / default | Purpose |
 |---|---|---|
-| `baseUrl` | String, `''` | Required for publishing, including preview. |
-| `authToken` | String, Gradle `confluence.token` then `CONFLUENCE_TOKEN` | Required for publishing, including preview. |
+| `baseUrl` | String, `''` | Required for publishing and importing, including preview. |
+| `authToken` | String, Gradle `confluence.token` then `CONFLUENCE_TOKEN` | Required for publishing and importing, including preview. |
 | `username` | String, `''` | Nonempty selects Basic auth; empty selects Bearer auth. |
 | `space` | String, `''` | Fallback space key for pages. |
 | `pagesDir` | Directory, `documentation/wiki` | Base directory for page discovery. |
@@ -401,12 +459,26 @@ tasks.named('confluenceCompile') {
 }
 ```
 
+Import task properties `pageId`, `pageUrl`, `output`, `overwrite`, and `preview`
+correspond to its command-line options. Its output root is fixed at `documents/wiki`;
+`pagesDir` controls publishing and does not change the import destination.
+
 Publish task properties `preview`, `changed`, and `onlyFiles` correspond to the
 three command-line options above; render's `onlyDiagrams` corresponds to its
 `--only` option. They may also be set through `tasks.named(...)`.
 
 ## Troubleshooting
 
+- Build fails creating `Test` / `DefaultReportContainer` with `Type T not present`:
+  check `./gradlew --version`. This failure was observed when Gradle 8.11.1 ran on
+  Java 25, outside its [supported Java runtime range](https://docs.gradle.org/8.11.1/userguide/compatibility.html).
+  The committed daemon JVM criteria select Java 21 independently of `JAVA_HOME`;
+  keep that file present and select Java 21 as the Gradle JVM in your IDE too.
+  With mise, run `mise install`, then `mise exec -- java -version`. To use its
+  environment explicitly, run `mise exec -- ./gradlew clean build` (Windows:
+  `mise exec -- .\gradlew.bat clean build`). If your current shell still selects
+  Java 25, activate the mise environment or set `JAVA_HOME` to your installed JDK 21.
+  The Java compilation toolchain alone does not select Gradle's runtime JVM.
 - HTML 404 titled `Page Unavailable`: `baseUrl` is missing `/wiki` (Cloud).
 - `403 "caller cannot access Confluence"`: the token is invalid/expired, the
   `username` email does not own the token, the account cannot access
@@ -418,12 +490,20 @@ three command-line options above; render's `onlyDiagrams` corresponds to its
   binary being present is not enough — the Docker daemon must be running.
 - `rendering '....mmd' failed (exit N)`: the container output follows in the
   message; usually a mermaid syntax error or a daemon/network problem.
+- Import reports `HTTP 401/403/404`: check the credentials, page ID, and page/asset
+  read permissions. Error responses are summarized without exposing server bodies.
+- Import reports unsupported storage or conversion warnings: see the
+  [import reference](docs/confluence-import.md#conversion-and-limitations).
+- Import reports an output collision: choose another path, or use `--overwrite`
+  after reviewing the existing document. It replaces files in this import's output
+  set and leaves unrelated or stale assets alone.
 
 ## Project layout
 
 - `core/` — plain Java library, no Gradle API (bundled into the plugin jar).
-- `cli/` — thin `main()` over core (parity debugging).
-- `gradle-plugin/` — the plugin: `confluence` extension + the four tasks.
+- `cli/` — thin `main()` over core (`sync` and `import`).
+- `gradle-plugin/` — the plugin: `confluence` extension + the five tasks.
+- `docs/` — feature references, including Confluence-to-Markdown imports.
 - `reference/` — Python reference copies, shell transcripts, provenance.
 
 Build with `./gradlew build` (JDK 21 toolchain, Gradle 8.5+). Tests: JUnit 5

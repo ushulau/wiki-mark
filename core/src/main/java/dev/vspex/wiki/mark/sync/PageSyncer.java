@@ -3,6 +3,7 @@ package dev.vspex.wiki.mark.sync;
 import dev.vspex.wiki.mark.client.ConfluenceException;
 import dev.vspex.wiki.mark.client.EnsureResult;
 import dev.vspex.wiki.mark.client.PageStore;
+import dev.vspex.wiki.mark.convert.LinkResolver;
 import dev.vspex.wiki.mark.convert.MarkdownConverter;
 import dev.vspex.wiki.mark.metadata.MetadataParser;
 import dev.vspex.wiki.mark.metadata.TitleResolver;
@@ -592,6 +593,7 @@ public final class PageSyncer {
     renderOpts.imageBaseDir = sourceDir.toString();
     renderOpts.pageLinks = pageTitles;
     renderOpts.attachReferenced = opts.attachReferenced;
+    renderOpts.attachmentPatterns = meta.attachments;
     RenderResult result = MarkdownConverter.render(body, renderOpts);
     warnUnsupportedHeaders(path, meta, body, log);
 
@@ -614,7 +616,7 @@ public final class PageSyncer {
 
     List<Path> attachments = attachmentPaths(meta.attachments, sourceDir);
     for (String ref : result.attachments()) {
-      Path refPath = sourceDir.resolve(ref).normalize();
+      Path refPath = sourceDir.resolve(LinkResolver.decodeLocalPath(ref)).normalize();
       if (Files.isRegularFile(refPath)) {
         if (!attachments.contains(refPath)) {
           attachments.add(refPath);

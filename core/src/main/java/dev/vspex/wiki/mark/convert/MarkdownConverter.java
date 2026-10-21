@@ -44,6 +44,9 @@ public final class MarkdownConverter {
 
     /** Upload local files that links point at. */
     public boolean attachReferenced = false;
+
+    /** Explicit attachment paths/globs whose local links should become attachment links. */
+    public List<String> attachmentPatterns = List.of();
   }
 
   /**
@@ -65,6 +68,7 @@ public final class MarkdownConverter {
             opts.pageLinks,
             opts.attachReferenced,
             attachments);
+    inline.setAttachmentPatterns(opts.attachmentPatterns);
     BlockRenderer blocks = new BlockRenderer(inline, opts.dropH1);
     String storage = String.join("", blocks.renderBlocks(TextLines.splitLines(markdownText)));
     return new RenderResult(storage, attachments);

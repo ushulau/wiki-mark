@@ -40,6 +40,28 @@ public class InlineRenderer {
   private final Map<String, String> pageLinks;
   private final boolean attachReferenced;
   private final List<String> attachments;
+  private List<String> attachmentPatterns = List.of();
+
+  void setAttachmentPatterns(List<String> patterns) {
+    attachmentPatterns = List.copyOf(patterns);
+  }
+
+  private boolean declaredAttachment(String href) {
+    String decoded = LinkResolver.decodeLocalPath(href);
+    for (String pattern : attachmentPatterns) {
+      try {
+        if (LinkResolver.normalizeJoin(imageBaseDir, pattern)
+                .equals(LinkResolver.normalizeJoin(imageBaseDir, decoded))
+            || java.nio.file.FileSystems.getDefault()
+                .getPathMatcher("glob:" + pattern)
+                .matches(java.nio.file.Path.of(decoded))) return true;
+      } catch (IllegalArgumentException e) {
+        // Missing/invalid explicit attachment patterns are diagnosed by the publish layer.
+      }
+    }
+    return false;
+  }
+
   private final List<String> spans = new ArrayList<>();
   private final List<String> escapes = new ArrayList<>();
 
@@ -212,7 +234,7 @@ public class InlineRenderer {
                       + "</ac:plain-text-link-body>"
                       + "</ac:link>");
             }
-            if (attachReferenced) {
+            if (attachReferenced || declaredAttachment(href)) {
               rememberAttachment(href);
               String filename = escapeAttr(LinkResolver.attachmentFilename(href));
               return stashHtml(

@@ -1,2 +1,3 @@
 [tools]
+codex = "latest"
 java = "temurin-21"
