@@ -3,6 +3,7 @@ package dev.vspex.wiki.mark.convert;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.vspex.wiki.mark.model.RenderResult;
@@ -428,5 +429,38 @@ class ConverterTest {
             });
     assertTrue(result.storage().contains("ri:page"));
     assertEquals(List.of(), result.attachments());
+  }
+
+  @Test
+  void test_raw_block_round_trips_verbatim() {
+    String storage =
+        "<p>one</p>\n\n<p>two</p>"
+            + "<ac:structured-macro ac:name=\"tip\"><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>"
+            + "<ac:structured-macro ac:name=\"code\"><ac:plain-text-body><![CDATA[a\n\nb]]></ac:plain-text-body></ac:structured-macro>";
+    String body =
+        "\n"
+            + MarkdownConverter.RAW_BEGIN
+            + "\n"
+            + storage
+            + "\n"
+            + MarkdownConverter.RAW_END
+            + "\n";
+    RenderResult result = render(body);
+    assertEquals(storage, result.storage());
+    assertEquals(List.of(), result.attachments());
+  }
+
+  @Test
+  void test_raw_block_needs_both_markers() {
+    String openOnly = MarkdownConverter.RAW_BEGIN + "\n<p>x</p>\n";
+    assertThrows(IllegalArgumentException.class, () -> render(openOnly));
+    String literal = "<p>" + MarkdownConverter.RAW_BEGIN + "</p>\n";
+    assertEquals("<p>" + MarkdownConverter.RAW_BEGIN + "</p>", render(literal).storage());
+  }
+
+  @Test
+  void test_marker_mention_in_markdown_stays_markdown() {
+    RenderResult result = render("# Title\n\nMention " + MarkdownConverter.RAW_BEGIN + " here.\n");
+    assertTrue(result.storage().startsWith("<h1>Title</h1>"), result.storage());
   }
 }

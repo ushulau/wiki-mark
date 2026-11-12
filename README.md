@@ -5,7 +5,7 @@ publishes `.md` pages to Confluence and imports existing pages as Markdown
 (Cloud / Data Center / Server v1 REST API).
 
 - Plugin id: `dev.vspex.confluence-publish`
-- Group: `dev.vspex`, version `0.4.0`
+- Group: `dev.vspex`, version `0.5.0`
 
 ## Requirements
 
@@ -36,7 +36,7 @@ pluginManagement {
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.4.0'
+  id 'dev.vspex.confluence-publish' version '0.5.0'
 }
 ```
 
@@ -61,7 +61,7 @@ Body text.
 
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.4.0'
+  id 'dev.vspex.confluence-publish' version '0.5.0'
 }
 
 confluence {
@@ -123,13 +123,15 @@ empty property overrides the environment variable and fails publishing.
 
 ## Tasks
 
+See the [command cheat sheet](docs/command-cheat-sheet.md) for commands, parameters, and short explanations.
+
 | Task | Purpose |
 |---|---|
 | `confluenceRenderDiagrams` | `.mmd` → images via a pinned mermaid-cli container. Skips when up-to-date (sources, config, and the `--only` selection are all tracked). `--only=<name>` (repeatable, `.mmd` suffix optional) renders selected diagrams. |
 | `confluenceCompile` | Runs render first so images are fresh (a no-op unless conversion is enabled), then checks all pages offline to `build/confluence/storage`. No network, no token. Joins `check` only when `verifyOnCheck = true`. |
-| `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` (or `onlyChanged = true` in config) publishes only pages whose digest differs from the state file (cross-page links still resolve against all pages); `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
+| `confluencePublish` | Runs render + compile, then syncs to Confluence. `--preview` resolves ancestry and prints storage without writing; `--changed` (or `onlyChanged = true` in config) checks all selected pages remotely to detect wiki edits even when local digests match; `--only=<file>` (repeatable, relative to `pagesDir`) wins over `--changed`. Never wired into `build`/`check`. |
 | `confluenceResetState` | Deletes the change-tracking state (`.gradle/confluence-publish/state.properties`, which survives `clean`; a legacy `documentation/wiki/.published-hashes` is imported once). |
-| `confluenceImport` | Reads one existing page and saves Markdown under `documents/wiki`. Select `--page-id` or `--page-url`; optionally set `--output`, `--overwrite`, or `--preview`. Never wired into `build`/`check` or publishing. |
+| `confluenceImport` | Reads one existing page beneath `confluence.pagesDir`. Select `--page-id` or `--page-url`; use `--lossless --verify` for exact storage preservation, or optional `--output`, `--overwrite`, and `--preview`. Never wired into `build`/`check` or publishing. |
 
 Task options belong to the task immediately preceding them:
 
@@ -146,22 +148,21 @@ Gradle's `--dry-run` only lists tasks; use `--preview` for a live publishing pre
 
 `confluenceCompile` checks parsing and rendering; it does not require a title or
 space, resolve live ancestry, or check explicit attachment patterns. Publishing
-requires both a resolved title and space. Its storage preview also precedes the
-publish-only `article` layout wrapper.
+requires both a resolved title and space. The publish preview includes the `article` layout wrapper.
 
-`onlyChanged` compares raw Markdown plus `.mmd` sources in `pagesDir/diagrams`
-referenced as `diagrams/<name>.png` against local state. A custom diagram source
-directory or SVG references do not participate in this diagram-source digest.
-It does not track DSL changes, arbitrary attachment changes, or remote
-edits. Disable it or reset state when those changes should force selection.
-For example, after changing `imageHeight` run `confluenceResetState` before
-`confluencePublish`, otherwise pages whose Markdown is unchanged are skipped
-and keep the old image size.
-`changesOnly` instead compares a rendered-content hash recorded in the remote
-version message; attachments and labels are still synchronized for selected pages.
-Page state is saved only after the entire selected batch succeeds, never in preview.
-Resetting state clears both page and diagram hashes; remove a legacy
-`.published-hashes` file too if you want to prevent its reimport.
+Publishing always compares raw local and remote storage and records a version-message
+hash plus per-page successful-publish state. Local-only edits publish silently;
+remote drift or unknown baselines show a unified diff and require an interactive
+confirmation or `--force`. Preview never writes. Concurrent HTTP 409 updates fail
+without retrying against a newer version.
+
+`--changed` / `onlyChanged` check all selected pages remotely; local digests cannot
+hide wiki edits. `changesOnly` is retained for compatibility: identical storage
+always skips all remote writes, including attachments and labels. Attachment-only
+or label-only edits therefore require a body change to publish. `--force` permits
+overwriting drift but does not bypass exact-equality skipping or version checks.
+`confluenceResetState` clears legacy page and diagram hashes while preserving
+publish baselines. See [import and drift behavior](docs/confluence-import.md).
 
 ## Import an existing Confluence page
 
@@ -173,6 +174,7 @@ The page supplies its own space; setting `confluence.space` is optional for impo
 ./gradlew confluenceImport --page-id=123456 --output=engineering/onboarding.md
 ./gradlew confluenceImport --page-url="https://example.atlassian.net/wiki/spaces/ENG/pages/123456/Onboarding"
 ./gradlew confluenceImport --page-id=123456 --output=engineering/onboarding.md --overwrite
+./gradlew confluenceImport --page-id=123456 --lossless --verify --output=releases/2026.md
 ```
 
 On Windows, use `.\gradlew.bat`. Specify exactly one selector. Supported page URLs
@@ -180,13 +182,18 @@ contain `/pages/<numeric-id>/...` or `viewpage.action?pageId=<numeric-id>` and m
 belong to the configured site and context path. For short links, use the page ID.
 
 The output is relative to the project owning the task. `--output` is a relative
-`.md` path under `documents/wiki`; by default the filename is
+`.md` path under `confluence.pagesDir` (default `documentation/wiki`); the filename defaults to
 `<sanitized-title>-<page-id>.md`. Absolute paths, traversal, reserved Windows names,
 and symlink/junction paths are rejected. Existing output files require `--overwrite`.
 `--preview` prints Markdown, planned paths, and warnings without creating files or
 downloading attachment bodies; collision checks still apply.
 
-Imports preserve supported text, headings, lists, code, and tables, download
+Use `--lossless --verify` to preserve the raw body exactly, including macros,
+layout, entities, CDATA, and original line endings. Lossless mode emits HTML comment
+headers and marker-wrapped storage. `--space`, `--parent`, and `--title` retarget
+headers without modifying storage and require lossless mode.
+
+Default Markdown imports preserve supported text, headings, lists, code, and tables, download
 referenced attachments into `<document-stem>.assets/`, and rewrite their links.
 Page links remain remote. Metadata includes the original space, title, ancestors,
 labels, and explicit non-image attachments. A sibling `.confluence.json` manifest
@@ -200,8 +207,8 @@ installed last. Downloads are limited to 50 MiB per asset and 200 MiB per import
 with a 30-second request timeout and at most five redirects. HTTPS CDN redirects
 receive no credentials. External images are kept as URLs.
 
-Imports always use `documents/wiki`; publishing still defaults to
-`documentation/wiki`. To compile or explicitly publish imported documents, set:
+Gradle import, compile, and publishing share `confluence.pagesDir`, defaulting to
+`documentation/wiki`. To choose another wiki root, set:
 
 ```groovy
 confluence {
@@ -335,7 +342,7 @@ offline verification during `check`, and PNG diagrams. Apply `base` to supply
 ```groovy
 plugins {
   id 'base'
-  id 'dev.vspex.confluence-publish' version '0.4.0'
+  id 'dev.vspex.confluence-publish' version '0.5.0'
 }
 
 confluence {
@@ -419,10 +426,10 @@ unless a fallback is described. Boolean defaults are `false`.
 | `appendLabels` | Boolean, `false` | Add labels without removing existing ones. Default replaces labels, including clearing them for pages without labels. |
 | `minorEdit` | Boolean, `false` | Mark page updates as minor edits. |
 | `versionMessage` | String, `''` | Message sent with page updates. |
-| `changesOnly` | Boolean, `false` | Use a remote version-message content hash to skip body updates; distinct from local selection. |
+| `changesOnly` | Boolean, `false` | Compatibility flag; exact storage equality always skips remote writes. |
 | `attachReferenced` | Boolean, `false` | Also upload local files referenced by links. Local images are collected without this flag. |
 | `continueOnError` | Boolean, `false` | Process remaining pages after a failure; task still fails if any page failed. |
-| `onlyChanged` | Boolean, `false` | Filter publishing using local digests, like `--changed`; `--only` takes precedence. |
+| `onlyChanged` | Boolean, `false` | Compatibility flag; remotely check every selected page for drift; `--only` takes precedence. |
 | `verifyOnCheck` | Boolean, `false` | Wire compile into `check` if a lifecycle plugin providing `check` is applied. |
 | `trustStore` | File, unset | Extra trust store augmenting the JVM's default store. |
 | `trustStorePassword` | String, `''` | Password for the extra trust store. |
@@ -459,12 +466,13 @@ tasks.named('confluenceCompile') {
 }
 ```
 
-Import task properties `pageId`, `pageUrl`, `output`, `overwrite`, and `preview`
-correspond to its command-line options. Its output root is fixed at `documents/wiki`;
-`pagesDir` controls publishing and does not change the import destination.
+Import task properties `pageId`, `pageUrl`, `output`, `overwrite`, `preview`,
+`lossless`, `verify`, `space`, `parents`, and `title` correspond to its command-line
+options. The `wikiDir` task property follows `confluence.pagesDir` (default
+`documentation/wiki`). The CLI defaults to `documents/wiki` and supports `--wiki-dir`.
 
-Publish task properties `preview`, `changed`, and `onlyFiles` correspond to the
-three command-line options above; render's `onlyDiagrams` corresponds to its
+Publish task properties `preview`, `force`, `changed`, and `onlyFiles` correspond to the
+`--preview`, `--force`, `--changed`, and `--only` options; render's `onlyDiagrams` corresponds to its
 `--only` option. They may also be set through `tasks.named(...)`.
 
 ## Troubleshooting

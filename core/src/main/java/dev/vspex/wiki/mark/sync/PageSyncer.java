@@ -599,8 +599,7 @@ public final class PageSyncer {
 
     if (opts.compileOnly || client == null) {
       String title = meta.title.isEmpty() ? "(no title)" : meta.title;
-      log.info("--- " + path + " -> " + meta.space + " / " + title + " ---");
-      log.info(result.storage().isEmpty() ? "(empty page)" : result.storage());
+      log.storage(file, meta.space, title, result.storage());
       return new SyncResult(SyncAction.COMPILED, path, meta.space, meta.title, "", "", "");
     }
 
@@ -626,67 +625,83 @@ public final class PageSyncer {
       }
     }
 
+    String storage = Layout.applyLayout(result.storage(), meta.layout, meta.sidebar);
+    String digest = ContentHash.contentHash(storage);
+    Map<String, Object> page = client.findPage(meta.space, meta.title, meta.type);
+    Map<String, Object> current =
+        page == null ? null : client.getPageById(String.valueOf(page.get("id")));
+    boolean equal = current != null && storage.equals(currentStorageValue(current));
+    boolean drift = false;
+    String diagnostic = "";
+    if (current != null && !equal) {
+      String remote = String.valueOf(currentStorageValue(current));
+      String baseline =
+          PublishBaseline.resolve(
+              ContentHash.readContentHash(versionMessage(current)),
+              versionNumber(current),
+              PublishBaseline.read(
+                  opts.baselineDirectory, client.baseUrl(), String.valueOf(current.get("id"))));
+      drift = baseline.isEmpty() || !ContentHash.contentHash(remote).equals(baseline);
+      if (drift) {
+        String kind =
+            baseline.isEmpty()
+                ? "unknown baseline"
+                : digest.equals(baseline) ? "remote-only drift" : "conflict";
+        String diff =
+            StorageDiff.diffStorage(redact(remote, opts), redact(storage, opts), "remote", "local");
+        if (diff.isEmpty())
+          diff = "Raw storage differs; display normalization hides the differences.\n";
+        diagnostic = redact("Publish stopped: " + kind + "\n" + diff, opts);
+      }
+    }
     if (opts.dryRun) {
-      ParentChain.ensureParentChain(client, meta.space, meta.type, meta.parents, true, log);
-      Map<String, Object> page = client.findPage(meta.space, meta.title, meta.type);
-      String where =
-          meta.parents.isEmpty()
-              ? ""
-              : "under '" + meta.parents.get(meta.parents.size() - 1) + "' ";
+      if (drift) log.warn(diagnostic);
       log.info(
           "dry-run "
               + path
-              + ": would publish '"
-              + meta.title
-              + "' ("
-              + (page == null ? "new" : String.valueOf(page.get("id")))
-              + ") "
-              + where
-              + "in space "
-              + meta.space);
-      log.info(result.storage().isEmpty() ? "(empty page)" : result.storage());
+              + ": "
+              + (equal ? "unchanged" : "would publish '")
+              + (equal ? "" : meta.title + "' in space " + meta.space));
+      log.info(redact(storage, opts));
       return new SyncResult(SyncAction.DRY_RUN, path, meta.space, meta.title, "", "", "");
     }
-
+    if (equal) {
+      String id = String.valueOf(current.get("id"));
+      String url = pageUrl(client.baseUrl(), current);
+      log.info("unchanged " + path + ": " + url);
+      return new SyncResult(SyncAction.UNCHANGED, path, meta.space, meta.title, id, url, "");
+    }
+    if (drift) {
+      log.warn(diagnostic);
+      if (!opts.force) {
+        if (opts.confirmOverwrite == null)
+          throw new SyncException(
+              diagnostic + "Use --force to explicitly overwrite remote storage.");
+        if (!opts.confirmOverwrite.test(diagnostic)) {
+          return new SyncResult(
+              SyncAction.SKIPPED,
+              path,
+              meta.space,
+              meta.title,
+              String.valueOf(current.get("id")),
+              pageUrl(client.baseUrl(), current),
+              "Kept remote storage");
+        }
+      }
+    }
+    // No mutations, including creating ancestors, occur before the drift decision.
     String parentId =
         ParentChain.ensureParentChain(client, meta.space, meta.type, meta.parents, false, log);
-    Map<String, Object> page = client.findPage(meta.space, meta.title, meta.type);
-
-    String storage = Layout.applyLayout(result.storage(), meta.layout, meta.sidebar);
-    String digest = opts.changesOnly ? ContentHash.contentHash(storage) : "";
-
+    String message = ContentHash.formatVersionMessage(opts.versionMessage, digest);
     SyncAction action;
-    if (page == null) {
-      page = client.createPage(meta.space, meta.title, storage, meta.type, parentId);
+    if (current == null) {
+      page = client.createPage(meta.space, meta.title, storage, meta.type, parentId, message);
       action = SyncAction.CREATED;
     } else {
-      Map<String, Object> current = client.getPageById(String.valueOf(page.get("id")));
-      if (opts.changesOnly) {
-        String previous = ContentHash.readContentHash(versionMessage(current));
-        if (previous.equals(digest)) {
-          action = SyncAction.UNCHANGED;
-        } else {
+      page =
           client.updatePage(
-              page,
-              storage,
-              opts.minorEdit,
-              ContentHash.formatVersionMessage(opts.versionMessage, digest),
-              appearanceOrDefault(meta),
-              meta.emoji);
-          action = SyncAction.UPDATED;
-        }
-      } else if (storage.equals(currentStorageValue(current))) {
-        action = SyncAction.UNCHANGED;
-      } else {
-        client.updatePage(
-            page,
-            storage,
-            opts.minorEdit,
-            opts.versionMessage,
-            appearanceOrDefault(meta),
-            meta.emoji);
-        action = SyncAction.UPDATED;
-      }
+              current, storage, opts.minorEdit, message, appearanceOrDefault(meta), meta.emoji);
+      action = SyncAction.UPDATED;
     }
 
     String pageId = String.valueOf(page.get("id"));
@@ -701,9 +716,23 @@ public final class PageSyncer {
       client.syncLabels(pageId, meta.labels, opts.appendLabels);
     }
 
+    new PublishBaseline(digest, versionNumber(page))
+        .save(opts.baselineDirectory, client.baseUrl(), pageId);
     String url = pageUrl(client.baseUrl(), page);
     log.info(action.wireName() + " " + path + ": " + url);
     return new SyncResult(action, path, meta.space, meta.title, pageId, url, "");
+  }
+
+  private static long versionNumber(Map<String, Object> page) {
+    if (page.get("version") instanceof Map<?, ?> version
+        && version.get("number") instanceof Number number) return number.longValue();
+    throw new SyncException("Page response has no version number; cannot safely track publication");
+  }
+
+  private static String redact(String value, SyncOptions opts) {
+    for (String secret : opts.redactions)
+      if (secret != null && !secret.isEmpty()) value = value.replace(secret, "[redacted]");
+    return value;
   }
 
   private static String appearanceOrDefault(Meta meta) {

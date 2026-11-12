@@ -14,6 +14,12 @@ public interface Log {
    */
   void debug(String message);
 
+  /** Receives a typed compile result, separate from human-readable progress messages. */
+  default void storage(java.nio.file.Path file, String space, String title, String storage) {
+    info("--- " + file + " -> " + space + " / " + title + " ---");
+    info(storage.isEmpty() ? "(empty page)" : storage);
+  }
+
   /**
    * Logs a progress message.
    *

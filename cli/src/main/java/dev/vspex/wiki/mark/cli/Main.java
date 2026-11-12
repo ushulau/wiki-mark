@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
  */
 public final class Main {
   /** Must match the project version in the root build file. */
-  static final String VERSION = "0.4.0";
+  static final String VERSION = "0.5.0";
 
   private static final String USAGE =
       """
@@ -60,7 +60,8 @@ public final class Main {
         --dry-run                  resolve pages/ancestry, print storage, write nothing
         --minor-edit               do not send notifications on update
         --version-message MSG      page version message
-        --changes-only             skip pages whose content hash already matches
+        --changes-only             retained compatibility flag; exact matches always skip
+        --force                    explicitly overwrite remote drift
         --ci                       do not fail when patterns match nothing
         --continue-on-error        keep processing remaining files after a failure
         --insecure-skip-tls-verify skip TLS certificate verification
@@ -123,6 +124,12 @@ public final class Main {
       if (config.opts.parentsFromPathRoot.isEmpty()) {
         config.opts.parentsFromPathRoot = runRoot(config.patterns, "");
       }
+      config.opts.baselineDirectory = Path.of(".gradle/confluence-publish/baselines");
+      config.opts.redactions =
+          List.of(
+              config.password.isEmpty()
+                  ? env.getOrDefault("CONFLUENCE_TOKEN", "")
+                  : config.password);
       RunReport report = PageSyncer.run(files, config.opts, client, log);
       try {
         report.throwIfFailed();
@@ -312,6 +319,7 @@ public final class Main {
     options.put(
         "--version-message",
         new Option(true, (config, value) -> config.opts.versionMessage = value));
+    options.put("--force", new Option(false, (config, value) -> config.opts.force = true));
     options.put(
         "--changes-only", new Option(false, (config, value) -> config.opts.changesOnly = true));
     options.put("--ci", new Option(false, (config, value) -> config.ci = true));

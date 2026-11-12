@@ -416,46 +416,14 @@ class ConfluenceClientTest {
   }
 
   @Test
-  void updatePageRetriesConflictOnce() throws Exception {
+  void updateConflictNeverRetriesWithNewerVersion() throws Exception {
     try (StubServer server = new StubServer()) {
-      RecordingSleeper sleeper = new RecordingSleeper();
-      ConfluenceClient client = client(server, sleeper);
-      client.setMaxRetries(0);
-      Map<String, Object> current = new LinkedHashMap<>();
-      current.put("id", "7");
-      current.put("version", Map.of("number", Long.valueOf(9)));
-      server.script(
-          StubServer.Stub.json(Map.of("message", "conflict"), 409),
-          StubServer.Stub.json(current),
-          StubServer.Stub.json(Map.of("id", "7")));
-      client.updatePage(page(), "<p>new</p>", false, "", "full-width", "");
-      assertEquals(3, server.requests().size());
-      StubServer.Captured reread = server.requests().get(1);
-      assertEquals("GET", reread.method);
-      assertEquals("expand=version", reread.rawQuery);
-      StubServer.Captured retry = server.requests().get(2);
-      Map<String, Object> payload = map(retry.bodyJson());
-      assertEquals(Long.valueOf(10), map(payload.get("version")).get("number"));
-      server.assertDone();
-    }
-  }
-
-  @Test
-  void updatePageDoubleConflictFriendly() throws Exception {
-    try (StubServer server = new StubServer()) {
-      RecordingSleeper sleeper = new RecordingSleeper();
-      ConfluenceClient client = client(server, sleeper);
-      client.setMaxRetries(0);
-      Map<String, Object> current = new LinkedHashMap<>();
-      current.put("id", "7");
-      current.put("version", Map.of("number", Long.valueOf(9)));
-      server.script(
-          StubServer.Stub.json(Map.of("message", "c1"), 409),
-          StubServer.Stub.json(current),
-          StubServer.Stub.json(Map.of("message", "c2"), 409));
-      Map<String, Object> page = page();
-      ConfluenceException e = assertThrows(ConfluenceException.class, () -> update(client, page));
-      assertTrue(e.getMessage().contains("conflicted twice"));
+      ConfluenceClient client = client(server, new RecordingSleeper());
+      server.script(StubServer.Stub.json(Map.of("message", "conflict"), 409));
+      var failure = assertThrows(ConfluenceException.class, () -> update(client, page()));
+      assertEquals(409, failure.status());
+      assertEquals(1, server.requests().size());
+      assertEquals("PUT", server.requests().get(0).method);
       server.assertDone();
     }
   }

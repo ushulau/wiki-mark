@@ -59,6 +59,28 @@ public class SyncOptions {
   /** Skip pages whose content hash already matches the remote version. */
   public boolean changesOnly = false;
 
+  /** Explicitly authorize overwriting remote drift (not concurrent version conflicts). */
+  public boolean force = false;
+
+  /** Optional persistent last-published state directory; adapters set this beneath .gradle. */
+  public java.nio.file.Path baselineDirectory;
+
+  /** Null when noninteractive; true explicitly approves overwrite, false keeps the remote. */
+  public java.util.function.Predicate<String> confirmOverwrite = consoleConfirmation();
+
+  /** Secrets removed from displayed storage diffs. Never used for equality or publishing. */
+  public List<String> redactions = new ArrayList<>();
+
+  private static java.util.function.Predicate<String> consoleConfirmation() {
+    var console = System.console();
+    if (console == null) return null;
+    return message ->
+        "yes"
+            .equalsIgnoreCase(
+                console.readLine(
+                    "%s%nOverwrite remote? Type yes [default: keep remote]: ", message));
+  }
+
   /** Keep processing remaining files after a failure. */
   public boolean continueOnError = false;
 

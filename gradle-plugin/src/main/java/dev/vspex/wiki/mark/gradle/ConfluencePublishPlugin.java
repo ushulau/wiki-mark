@@ -27,7 +27,8 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
             ConfluenceImportTask.class,
             task -> {
               task.setGroup("documentation");
-              task.setDescription("Imports one Confluence page as Markdown under documents/wiki");
+              task.setDescription(
+                  "Imports one Confluence page as Markdown under the wiki directory");
               task.getBaseUrl().convention(extension.getBaseUrl());
               task.getAuthToken().convention(extension.getAuthToken());
               task.getUsername().convention(extension.getUsername());
@@ -35,11 +36,17 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
               task.getTrustStorePassword().convention(extension.getTrustStorePassword());
               task.getInsecureSkipTlsVerify().convention(extension.getInsecureSkipTlsVerify());
               task.getProjectDir().convention(project.getLayout().getProjectDirectory());
+              task.getWikiDir().convention(extension.getPagesDir());
               task.getPageId().convention("");
               task.getPageUrl().convention("");
               task.getOutput().convention("");
               task.getOverwrite().convention(false);
               task.getPreview().convention(false);
+              task.getLossless().convention(false);
+              task.getVerify().convention(false);
+              task.getSpace().convention("");
+              task.getTitle().convention("");
+              task.getParents().convention(List.of());
             });
 
     TaskProvider<ConfluenceRenderDiagramsTask> render =

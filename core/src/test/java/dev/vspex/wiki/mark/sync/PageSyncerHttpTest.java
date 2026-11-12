@@ -57,8 +57,8 @@ class PageSyncerHttpTest {
       String base = server.baseUrl();
       server.script(
           StubServer.Stub.json(Map.of("results", List.of())),
-          StubServer.Stub.json(remotePage(base, "101", "P1", "")),
           StubServer.Stub.json(Map.of("results", List.of())),
+          StubServer.Stub.json(remotePage(base, "101", "P1", "")),
           StubServer.Stub.json(remotePage(base, "102", "Hello", "<p>Body.</p>")),
           StubServer.Stub.json(Map.of("results", List.of(), "_links", Map.of())),
           StubServer.Stub.json(Map.of("results", List.of(Map.of("id", "a1")))),
@@ -74,7 +74,13 @@ class PageSyncerHttpTest {
       assertEquals(base + "/pages/102", result.url());
       assertTrue(log.infoContains("attachment a.png uploaded"));
       List<String> methods = server.requests().stream().map(request -> request.method).toList();
-      assertEquals(List.of("GET", "POST", "GET", "POST", "GET", "POST", "GET", "POST"), methods);
+      assertEquals(List.of("GET", "GET", "POST", "POST", "GET", "POST", "GET", "POST"), methods);
+      Map<?, ?> create = (Map<?, ?>) server.requests().get(3).bodyJson();
+      String sent =
+          (String) ((Map<?, ?>) ((Map<?, ?>) create.get("body")).get("storage")).get("value");
+      assertEquals(
+          ContentHash.formatVersionMessage("", ContentHash.contentHash(sent)),
+          ((Map<?, ?>) create.get("version")).get("message"));
       StubServer.Captured labelsPost = server.requests().get(7);
       assertEquals("/rest/api/content/102/label", labelsPost.path);
       assertEquals(List.of(Map.of("prefix", "global", "name", "l1")), labelsPost.bodyJson());
@@ -87,9 +93,7 @@ class PageSyncerHttpTest {
     Path path = tmp.resolve("page.md");
     Files.writeString(path, PageSyncerTest.DOC, StandardCharsets.UTF_8);
     try (StubServer server = new StubServer()) {
-      server.script(
-          StubServer.Stub.json(Map.of("results", List.of())),
-          StubServer.Stub.json(Map.of("results", List.of())));
+      server.script(StubServer.Stub.json(Map.of("results", List.of())));
       ConfluenceClient client = new ConfluenceClient(server.baseUrl(), "", "tok");
       SyncOptions opts = new SyncOptions();
       opts.dryRun = true;
@@ -97,7 +101,7 @@ class PageSyncerHttpTest {
       SyncResult result =
           PageSyncer.syncFile(path, opts, client, Map.of(), new PageSyncerTest.RecordingLog());
       assertEquals(SyncAction.DRY_RUN, result.action());
-      assertEquals(2, server.requests().size());
+      assertEquals(1, server.requests().size());
       assertTrue(server.requests().stream().allMatch(request -> request.method.equals("GET")));
       server.assertDone();
     }
@@ -117,8 +121,7 @@ class PageSyncerHttpTest {
       Map<String, Object> found = remotePage(base, "102", "Hello", storage);
       server.script(
           StubServer.Stub.json(Map.of("results", List.of(found))),
-          StubServer.Stub.json(remotePage(base, "102", "Hello", storage)),
-          StubServer.Stub.json(Map.of("results", List.of())));
+          StubServer.Stub.json(remotePage(base, "102", "Hello", storage)));
       ConfluenceClient client = new ConfluenceClient(base, "", "tok");
       SyncResult result =
           PageSyncer.syncFile(

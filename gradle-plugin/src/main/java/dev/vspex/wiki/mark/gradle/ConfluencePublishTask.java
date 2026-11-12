@@ -8,7 +8,6 @@ import dev.vspex.wiki.mark.sync.RunReport;
 import dev.vspex.wiki.mark.sync.SyncException;
 import dev.vspex.wiki.mark.sync.SyncOptions;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -282,6 +281,17 @@ public abstract class ConfluencePublishTask extends DefaultTask {
       description = "Publish only these files, relative to pagesDir. Repeatable.")
   public abstract ListProperty<String> getOnlyFiles();
 
+  /**
+   * Explicitly allow overwriting remote drift.
+   *
+   * @return the force option
+   */
+  @Internal
+  @Option(
+      option = "force",
+      description = "Explicitly overwrite remote drift; concurrent edits still fail.")
+  public abstract Property<Boolean> getForce();
+
   /** Syncs the selected pages to Confluence. */
   @TaskAction
   public void publish() {
@@ -308,6 +318,10 @@ public abstract class ConfluencePublishTask extends DefaultTask {
     }
     Path pagesDir = getPagesDir().getAsFile().get().toPath();
     SyncOptions opts = options(pagesDir);
+    opts.force = getForce().getOrElse(false);
+    opts.redactions = List.of(token);
+    opts.baselineDirectory =
+        getProjectDir().getAsFile().get().toPath().resolve(".gradle/confluence-publish/baselines");
     SyncSupport.validate(opts);
 
     List<Path> files = selectFiles(pagesDir, log);
@@ -366,23 +380,9 @@ public abstract class ConfluencePublishTask extends DefaultTask {
     if (!getChanged().getOrElse(false)) {
       return files;
     }
-    Path statePath = SyncSupport.stateFile(getProjectDir().getAsFile().get().toPath());
-    Map<String, String> state = SyncSupport.loadState(statePath);
-    if (!Files.isRegularFile(statePath)) {
-      Map<String, String> legacy = SyncSupport.importLegacyHashes(pagesDir);
-      if (!legacy.isEmpty()) {
-        log.info("Imported " + legacy.size() + " hashes from .published-hashes.");
-        state.putAll(legacy);
-      }
-    }
-    List<Path> changed = new ArrayList<>();
-    for (Path file : files) {
-      String key = SyncSupport.relativeKey(pagesDir, file);
-      if (!SyncSupport.digestPage(pagesDir, file).equals(state.get(key))) {
-        changed.add(file);
-      }
-    }
-    return changed;
+    log.info(
+        "--changed checks all selected pages remotely so wiki edits cannot bypass drift detection.");
+    return files;
   }
 
   private void writeState(Path pagesDir, List<Path> files) throws IOException {

@@ -23,8 +23,7 @@ class StorageCaptureLogTest {
     StorageCaptureLog log = new StorageCaptureLog(delegate, dir, out);
 
     Path page = dir.resolve("sub/01-a.md");
-    log.info("--- " + page + " -> SPACE / Hello ---");
-    log.info("<h1>Hello</h1>");
+    log.storage(page, "SPACE", "Hello", "<h1>Hello</h1>");
     log.info("unrelated progress");
 
     assertEquals("<h1>Hello</h1>", read(out.resolve("sub/01-a.html")));
@@ -36,8 +35,7 @@ class StorageCaptureLogTest {
     RecordingLog delegate = new RecordingLog();
     StorageCaptureLog log = new StorageCaptureLog(delegate, dir, dir.resolve("out"));
 
-    log.info("--- " + dir.resolve("01-a.md") + " -> SPACE / Empty ---");
-    log.info("(empty page)");
+    log.storage(dir.resolve("01-a.md"), "SPACE", "Empty", "");
 
     assertEquals("", read(dir.resolve("out/01-a.html")));
     assertTrue(delegate.infos.isEmpty());
@@ -48,8 +46,7 @@ class StorageCaptureLogTest {
     RecordingLog delegate = new RecordingLog();
     StorageCaptureLog log = new StorageCaptureLog(delegate, dir, dir.resolve("out"));
 
-    log.info("--- " + dir.resolve("note.markdown") + " -> S / N ---");
-    log.info("x");
+    log.storage(dir.resolve("note.markdown"), "S", "N", "x");
     log.warn("a warning");
     log.debug("debug noise");
     log.error("boom");
@@ -58,6 +55,15 @@ class StorageCaptureLogTest {
     assertEquals(List.of("a warning"), delegate.warnings);
     assertEquals(List.of("debug noise"), delegate.debugs);
     assertEquals(List.of("boom"), delegate.errors);
+  }
+
+  @Test
+  void literalControlMessagesStayStorage() {
+    var log = new StorageCaptureLog(new RecordingLog(), dir, dir.resolve("out"));
+    for (String body : List.of("(empty page)", "--- page.md -> S / Title ---", "text\r\n\r\nend")) {
+      log.storage(dir.resolve("raw.md"), "S", "Title", body);
+      assertEquals(body, read(dir.resolve("out/raw.html")));
+    }
   }
 
   private static String read(Path file) {

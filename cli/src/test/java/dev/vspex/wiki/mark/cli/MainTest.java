@@ -55,7 +55,7 @@ class MainTest {
   void versionPrints() {
     Capture capture = new Capture();
     assertEquals(0, run(capture, "--version"));
-    assertTrue(capture.outText().contains("0.4.0"));
+    assertTrue(capture.outText().contains("0.5.0"));
   }
 
   @Test

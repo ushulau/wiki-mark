@@ -431,9 +431,21 @@ public class ConfluenceClient implements PageStore {
 
   public Map<String, Object> createPage(
       String space, String title, String body, String type, String parentId) {
+    return createPage(space, title, body, type, parentId, "");
+  }
+
+  @Override
+  public Map<String, Object> createPage(
+      String space,
+      String title,
+      String body,
+      String type,
+      String parentId,
+      String versionMessage) {
     String what = "create page '" + title + "' in space " + space;
     requireV1(what);
     Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("version", Map.of("number", 1, "message", versionMessage));
     payload.put("type", type);
     payload.put("title", title);
     payload.put("space", Map.of("key", space));
@@ -453,8 +465,8 @@ public class ConfluenceClient implements PageStore {
   }
 
   /**
-   * Updates a page's content; retries a 409 conflict once, afresh (re-reading the version, which
-   * may already include someone else's concurrent edit).
+   * Updates at the checked version. A concurrent edit fails with HTTP 409; it is never retried with
+   * a newer version.
    */
   public Map<String, Object> updatePage(
       Map<String, Object> page,
@@ -465,32 +477,8 @@ public class ConfluenceClient implements PageStore {
       String emoji) {
     String what = "update page '" + page.get("title") + "' (" + page.get("id") + ")";
     requireV1(what);
-    long version = versionNumber(page);
-    try {
-      return putPage(page, content, version + 1, minorEdit, versionMessage, appearance, emoji);
-    } catch (ConfluenceException e) {
-      if (e.status() == null || e.status() != 409) {
-        throw e;
-      }
-      Map<String, Object> current = getPageById(String.valueOf(page.get("id")), "version");
-      long currentVersion = versionNumber(current);
-      try {
-        return putPage(
-            page, content, currentVersion + 1, minorEdit, versionMessage, appearance, emoji);
-      } catch (ConfluenceException retry) {
-        if (retry.status() != null && retry.status() == 409) {
-          throw new ConfluenceException(
-              "update of page '"
-                  + page.get("title")
-                  + "' ("
-                  + page.get("id")
-                  + ") "
-                  + "conflicted twice; something else is writing to the page, "
-                  + "run mark again once it has stopped");
-        }
-        throw retry;
-      }
-    }
+    return putPage(
+        page, content, versionNumber(page) + 1, minorEdit, versionMessage, appearance, emoji);
   }
 
   private Map<String, Object> putPage(
@@ -710,6 +698,20 @@ public class ConfluenceClient implements PageStore {
    * Automatic redirects are deliberately disabled.
    */
   public byte[] downloadForImport(String download) {
+    return downloadForImportBody(download, null, LimitedBodySubscriber.LIMIT);
+  }
+
+  /** Downloads directly into a staging file with an aggregate remaining-byte budget. */
+  public long downloadForImport(String download, Path destination, long remaining) {
+    downloadForImportBody(download, destination, remaining);
+    try {
+      return Files.size(destination);
+    } catch (IOException e) {
+      throw new ConfluenceException("Cannot read staged attachment size");
+    }
+  }
+
+  private byte[] downloadForImportBody(String download, Path destination, long remaining) {
     URI base = URI.create(baseUrl);
     URI target;
     try {
@@ -732,7 +734,9 @@ public class ConfluenceClient implements PageStore {
         try {
           var builder = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(30)).GET();
           if (authenticated) authHeaders().forEach(builder::header);
-          response = downloader.send(builder.build(), info -> new LimitedBodySubscriber());
+          response =
+              downloader.send(
+                  builder.build(), info -> new LimitedBodySubscriber(destination, remaining));
         } catch (IOException e) {
           // Do not retry size-limit failures, and never expose URL/query/body details.
           if (attempt < maxRetries && !String.valueOf(e.getMessage()).contains("50 MiB")) {

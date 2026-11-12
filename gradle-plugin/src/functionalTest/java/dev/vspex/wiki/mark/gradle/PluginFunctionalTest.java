@@ -137,7 +137,7 @@ class PluginFunctionalTest {
   }
 
   @Test
-  void onlyChangedSelectsFromState() throws Exception {
+  void onlyChangedStillChecksRemoteForUnchangedLocalFiles() throws Exception {
     writeBuild("  baseUrl = 'https://wiki.example.invalid'\n  onlyChanged = true\n");
     writePage("01-same.md", "<!-- Space: DEMO -->\n<!-- Title: Same -->\n\nSame.\n");
     writePage("02-new.md", "<!-- Space: DEMO -->\n<!-- Title: New -->\n\nNew.\n");
@@ -147,11 +147,11 @@ class PluginFunctionalTest {
     BuildResult result = runner("confluencePublish", "-Pconfluence.token=dummy").buildAndFail();
 
     assertTrue(result.getOutput().contains("02-new.md"), result.getOutput());
-    assertFalse(result.getOutput().contains("01-same.md"), result.getOutput());
+    assertTrue(result.getOutput().contains("01-same.md"), result.getOutput());
   }
 
   @Test
-  void changedOptionSelectsFromState() throws Exception {
+  void changedOptionStillChecksRemoteForUnchangedLocalFiles() throws Exception {
     writeBuild("  baseUrl = 'https://wiki.example.invalid'\n");
     writePage("01-same.md", "<!-- Space: DEMO -->\n<!-- Title: Same -->\n\nSame.\n");
     writePage("02-new.md", "<!-- Space: DEMO -->\n<!-- Title: New -->\n\nNew.\n");
@@ -161,7 +161,7 @@ class PluginFunctionalTest {
         runner("confluencePublish", "--changed", "-Pconfluence.token=dummy").buildAndFail();
 
     assertTrue(result.getOutput().contains("02-new.md"), result.getOutput());
-    assertFalse(result.getOutput().contains("01-same.md"), result.getOutput());
+    assertTrue(result.getOutput().contains("01-same.md"), result.getOutput());
   }
 
   @Test

@@ -62,6 +62,7 @@ class PageSyncerTest {
     final Map<List<String>, Map<String, Object>> pages = new LinkedHashMap<>();
     final List<List<Object>> writes = new ArrayList<>();
     int nextId = 100;
+    boolean failUpdate, failLabels;
 
     @Override
     public String baseUrl() {
@@ -125,6 +126,15 @@ class PageSyncerTest {
     }
 
     @Override
+    public Map<String, Object> createPage(
+        String space, String title, String body, String type, String parentId, String message) {
+      var page = createPage(space, title, body, type, parentId);
+      var stored = pages.get(List.of(space, title, type));
+      stored.put("version", new LinkedHashMap<>(Map.of("number", 1L, "message", message)));
+      return new LinkedHashMap<>(stored);
+    }
+
+    @Override
     public Map<String, Object> updatePage(
         Map<String, Object> page,
         String content,
@@ -132,6 +142,7 @@ class PageSyncerTest {
         String versionMessage,
         String appearance,
         String emoji) {
+      if (failUpdate) throw new SyncException("Simulated update failure");
       Map<String, Object> kwargs = new LinkedHashMap<>();
       kwargs.put("minorEdit", minorEdit);
       kwargs.put("versionMessage", versionMessage);
@@ -166,6 +177,7 @@ class PageSyncerTest {
 
     @Override
     public void syncLabels(String pageId, List<String> labels, boolean append) {
+      if (failLabels) throw new SyncException("Simulated label failure");
       writes.add(List.of("labels", pageId, new ArrayList<>(labels), append));
     }
 
@@ -272,13 +284,12 @@ class PageSyncerTest {
     SyncResult result = sync(path, opts, client, log);
     assertEquals(SyncAction.DRY_RUN, result.action());
     assertEquals(List.of(), client.writes);
-    assertTrue(log.infoContains("dry-run " + path + ": would publish 'Hello' (new)"));
-    assertTrue(log.infoContains("under 'P2' in space DOC"));
+    assertTrue(log.infoContains("dry-run " + path + ": would publish 'Hello' in space DOC"));
     assertTrue(log.infoContains("Some body."));
   }
 
   @Test
-  void dryRunPrintsStorageWithoutLayout(@TempDir Path tmp) throws Exception {
+  void dryRunPrintsActualStorageWithLayout(@TempDir Path tmp) throws Exception {
     String text =
         "<!-- Space: DOC -->\n<!-- Title: Hello -->\n<!-- Layout: article -->\n"
             + "<!-- Sidebar: <p>side</p> -->\n\nSome body.\n";
@@ -289,7 +300,7 @@ class PageSyncerTest {
     SyncResult result = sync(path, opts, new FakePageStore(), log);
     assertEquals(SyncAction.DRY_RUN, result.action());
     assertTrue(log.infoContains("Some body."));
-    assertTrue(log.infos.stream().noneMatch(line -> line.contains("<ac:layout>")));
+    assertTrue(log.infos.stream().anyMatch(line -> line.contains("<ac:layout>")));
   }
 
   @Test
@@ -389,7 +400,7 @@ class PageSyncerTest {
   }
 
   @Test
-  void unchangedStillSyncsAttachmentsAndLabels(@TempDir Path tmp) throws Exception {
+  void unchangedDoesNotWriteAttachmentsOrLabels(@TempDir Path tmp) throws Exception {
     Files.createDirectories(tmp.resolve("assets"));
     Files.write(tmp.resolve("assets/a.png"), new byte[] {1});
     String text =
@@ -402,8 +413,8 @@ class PageSyncerTest {
     assertEquals(SyncAction.CREATED, sync(path, opts, client, log).action());
     client.writes.clear();
     assertEquals(SyncAction.UNCHANGED, sync(path, opts, client, log).action());
-    assertEquals(1, client.count("attach"));
-    assertEquals(1, client.count("labels"));
+    assertEquals(0, client.count("attach"));
+    assertEquals(0, client.count("labels"));
   }
 
   @Test
@@ -428,9 +439,11 @@ class PageSyncerTest {
     tagged.put("message", ContentHash.formatVersionMessage("ship", digest));
     stored.put("version", tagged);
     client.writes.clear();
-    assertEquals(SyncAction.UNCHANGED, sync(path, opts, client, log).action());
+    opts.confirmOverwrite = null;
+    assertThrows(SyncException.class, () -> sync(path, opts, client, log));
     assertEquals(0, client.count("update"));
-    // A mismatched hash updates and stamps the new digest.
+    // Explicit force permits replacing an unknown baseline.
+    opts.force = true;
     Map<String, Object> old = new LinkedHashMap<>();
     old.put("number", 3L);
     old.put("message", "[v0*****] old");

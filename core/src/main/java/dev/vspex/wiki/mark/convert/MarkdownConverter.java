@@ -16,6 +16,16 @@ import java.util.Map;
 public final class MarkdownConverter {
   private MarkdownConverter() {}
 
+  /**
+   * Start marker of a lossless raw storage block. The markers carry no colon, so the metadata
+   * parser treats them as ordinary comments: the header run ends at the first marker and stranded
+   * header checks skip them.
+   */
+  public static final String RAW_BEGIN = "<!-- wiki-mark-raw-begin -->";
+
+  /** End marker of a lossless raw storage block. */
+  public static final String RAW_END = "<!-- wiki-mark-raw-end -->";
+
   /** Options for {@link #render}; mirrors {@code render} keyword arguments. */
   public static class RenderOptions {
     /** Creates options with defaults. */
@@ -59,6 +69,10 @@ public final class MarkdownConverter {
    */
   public static RenderResult render(String markdownText, RenderOptions opts) {
     List<String> attachments = new ArrayList<>();
+    String raw = extractRaw(markdownText);
+    if (raw != null) {
+      return new RenderResult(raw, attachments);
+    }
     InlineRenderer inline =
         new InlineRenderer(
             opts.imageAlign,
@@ -72,5 +86,29 @@ public final class MarkdownConverter {
     BlockRenderer blocks = new BlockRenderer(inline, opts.dropH1);
     String storage = String.join("", blocks.renderBlocks(TextLines.splitLines(markdownText)));
     return new RenderResult(storage, attachments);
+  }
+
+  /** Extracts the original payload; framing uses exactly one LF on each side. */
+  static String extractRaw(String text) {
+    int first = 0;
+    while (first < text.length() && Character.isWhitespace(text.charAt(first))) first++;
+    if (!text.startsWith(RAW_BEGIN, first)) {
+      if (text.stripTrailing().endsWith("\n" + RAW_END) || text.strip().equals(RAW_END)) {
+        throw new IllegalArgumentException("Raw storage closing marker has no opening marker");
+      }
+      return null;
+    }
+    int start = first + RAW_BEGIN.length();
+    if (start >= text.length() || text.charAt(start) != '\n') {
+      throw new IllegalArgumentException("Raw storage opening marker must end with LF");
+    }
+    start++;
+    int end = text.length();
+    while (end > start && Character.isWhitespace(text.charAt(end - 1))) end--;
+    int close = end - RAW_END.length();
+    if (close < start || !text.startsWith(RAW_END, close) || text.charAt(close - 1) != '\n') {
+      throw new IllegalArgumentException("Raw storage requires a closing marker on its own line");
+    }
+    return text.substring(start, close - 1);
   }
 }

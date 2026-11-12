@@ -50,8 +50,20 @@ public interface PageStore {
   Map<String, Object> createPage(
       String space, String title, String body, String type, String parentId);
 
+  /** Creates a page with its initial last-published version tag. */
+  default Map<String, Object> createPage(
+      String space,
+      String title,
+      String body,
+      String type,
+      String parentId,
+      String versionMessage) {
+    Map<String, Object> page = createPage(space, title, body, type, parentId);
+    return updatePage(page, body, false, versionMessage, "full-width", "");
+  }
+
   /**
-   * Updates a page's content, retrying one 409 conflict afresh.
+   * Updates a page's content at the supplied version; concurrent changes must fail.
    *
    * @param page the current page map
    * @param content the new storage body
