@@ -1,6 +1,6 @@
 # Command cheat sheet
 
-For wiki-mark 0.5.0. Commands and parameters below match the current implementation.
+For wiki-mark 0.8.0. Commands and parameters below match the current implementation.
 Examples use generic spaces, pages, and paths.
 
 ## Quick start
@@ -99,11 +99,15 @@ and a token, including for preview.
 - A lossless import records the baseline, so editing an import and publishing
   needs no `--force`. Re-import to refresh a stale baseline; a successful `--force` publish also refreshes it.
 - Conflict output names the remote and baseline versions, the last editor and
-  time, and a unified diff; server-side normalization (macro IDs) can cause a
-  one-time remote-only drift notice — republish with `--force` to refresh.
-- Identical storage skips all remote writes, including labels and attachments.
-  An attachment-only or label-only change requires a body change to publish.
-- `--force` does not bypass equality skipping or concurrent HTTP 409 conflicts.
+  time, and a unified diff. Baselines hash the verified stored body after publishing.
+- Identical storage skips all remote writes. Verified history also skips writes when
+  compiled input, render context, remote body and version are unchanged, even if the
+  server rewrote submitted markup. This applies to `--force` too.
+- Both skip paths also skip labels and attachments. An attachment-only or label-only
+  change requires a body change to publish.
+- Older ambiguous snapshots may require one reviewed `--force` publish to establish
+  the new history. Subsequent unchanged publishes skip; repeated force is unnecessary.
+- `--force` does not bypass unchanged skipping or concurrent HTTP 409 conflicts.
 - Publish preview still runs dependencies that may write local compiled files or
   diagram outputs. `--only` does not narrow those dependencies.
 - Gradle `--dry-run` lists scheduled tasks without running them. Use task
@@ -232,7 +236,7 @@ install a `mark` executable. Build the jars first:
 
 ```powershell
 .\gradlew.bat :cli:jar :core:jar
-java -cp "cli/build/libs/cli-0.5.0.jar;core/build/libs/core-0.5.0.jar" dev.vspex.wiki.mark.cli.Main --help
+java -cp "cli/build/libs/cli-0.8.0.jar;core/build/libs/core-0.8.0.jar" dev.vspex.wiki.mark.cli.Main --help
 ```
 
 On Unix use `:` instead of `;` between classpath entries. Replace `mark` in the
@@ -376,3 +380,17 @@ Verified same-target lossless imports refresh the local baseline even without `-
 (the exact compile check runs internally). `--overwrite` replaces older state and invalidates
 older merge history. `--no-baseline` preserves previous state. Local baselines belong to each
 checkout; removing `.gradle` removes them. Use a qualifying lossless import to establish them again.
+
+### Verified publish history (0.8.0)
+
+No new command or flag is required. Publish saves compiled input, submitted markup and
+verified stored markup separately under `.gradle/confluence-publish/baselines`.
+Server rewriting alone no longer produces recurring drift after a successful publish
+with this history. Remote body or revision changes still require review.
+
+Existing schema-1 snapshots load conservatively. If old ambiguous history stops a publish,
+review `confluencePublish --preview --only=guide.md` before authorizing
+`confluencePublish --force --only=guide.md`. A lossless re-import is an alternative when
+remote storage should become the local source. Keep using `--merge` when retaining remote
+contributions; ordinary publish still protects those contributions from replacement.
+See [release notes](release-notes/0.8.0.md) and [merge recovery](publish-merge.md).

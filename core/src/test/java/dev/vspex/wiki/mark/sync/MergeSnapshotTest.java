@@ -11,7 +11,8 @@ class MergeSnapshotTest {
 
   @Test
   void roundTripIntegrityAndIdentity() throws Exception {
-    var snapshot = new MergeSnapshot("<p>local</p>", "<p>remote</p>", 7, "context");
+    var snapshot =
+        new MergeSnapshot("<p>local</p>", "<p>submitted</p>", "<p>remote</p>", 7, "context");
     snapshot.save(root, "https://example.test/", "7");
     assertEquals(snapshot, MergeSnapshot.read(root, "https://example.test", "7"));
     assertNull(MergeSnapshot.read(root, "https://other.test", "7"));
@@ -20,7 +21,10 @@ class MergeSnapshotTest {
     try (var files = Files.list(root)) {
       file = files.findFirst().orElseThrow();
     }
-    Files.writeString(file, Files.readString(file).replace("<p>remote</p>", "<p>tampered</p>"));
+    String valid = Files.readString(file);
+    Files.writeString(file, valid.replace("<p>submitted</p>", "<p>tampered</p>"));
+    assertThrows(SyncException.class, () -> MergeSnapshot.read(root, "https://example.test", "7"));
+    Files.writeString(file, valid.replace("<p>remote</p>", "<p>tampered</p>"));
     assertThrows(SyncException.class, () -> MergeSnapshot.read(root, "https://example.test", "7"));
   }
 

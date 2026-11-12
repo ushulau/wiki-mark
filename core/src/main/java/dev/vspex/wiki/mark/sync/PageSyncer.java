@@ -696,13 +696,15 @@ public final class PageSyncer {
           throw new SyncException("Merge unavailable: contradictory snapshot version");
         if (versionNumber(current) > snapshot.version()
             && !tag.isEmpty()
-            && !tag.equals(ContentHash.contentHash(snapshot.remote())))
+            && !tag.equals(ContentHash.contentHash(snapshot.submitted())))
           throw new SyncException(
               "Merge unavailable: newer publication supersedes snapshot history");
         storage =
             StorageMerge.merge(
                 snapshot.remote(),
-                StorageMerge.merge(snapshot.local(), localInput, snapshot.remote()),
+                localInput.equals(snapshot.local())
+                    ? snapshot.remote()
+                    : StorageMerge.merge(snapshot.local(), localInput, snapshot.submitted()),
                 remote);
       }
       // Existing-page merge deliberately leaves auxiliary resources untouched.
@@ -750,9 +752,21 @@ public final class PageSyncer {
               e);
         }
       }
-      String actual = String.valueOf(currentStorageValue(accepted));
+      if (!hasStorageBody(accepted))
+        throw new SyncException("Merge verification body missing; snapshots not advanced");
+      String actual = (String) currentStorageValue(accepted);
+      String acceptedSubmitted = storage;
+      if (storage.equals(remote) && snapshot != null && localInput.equals(snapshot.local())) {
+        try {
+          acceptedSubmitted = StorageMerge.merge(snapshot.remote(), snapshot.submitted(), remote);
+        } catch (SyncException conflict) {
+          // Preserve an accepted remote edit even when its block overlaps a server rewrite.
+          acceptedSubmitted = remote;
+        }
+      }
       try {
-        new MergeSnapshot(localInput, actual, versionNumber(accepted), snapshotContext)
+        new MergeSnapshot(
+                localInput, acceptedSubmitted, actual, versionNumber(accepted), snapshotContext)
             .save(opts.baselineDirectory, client.baseUrl(), identity);
         new PublishBaseline(ContentHash.contentHash(actual), versionNumber(accepted))
             .save(opts.baselineDirectory, client.baseUrl(), identity);
@@ -774,8 +788,16 @@ public final class PageSyncer {
           pageUrl(client.baseUrl(), accepted),
           "Merged body; auxiliary resources preserved");
     }
-    boolean retainedRemote = snapshot != null && !snapshot.local().equals(snapshot.remote());
-    boolean equal = current != null && storage.equals(currentStorageValue(current));
+    boolean retainedRemote = snapshot != null && !snapshot.local().equals(snapshot.submitted());
+    boolean historyEqual =
+        snapshot != null
+            && !retainedRemote
+            && snapshot.context().equals(snapshotContext)
+            && snapshot.version() == versionNumber(current)
+            && snapshot.local().equals(localInput)
+            && snapshot.remote().equals(currentStorageValue(current));
+    boolean equal =
+        current != null && (storage.equals(currentStorageValue(current)) || historyEqual);
     boolean drift = retainedRemote && !equal;
     String diagnostic = "";
     if (current != null && !equal) {
@@ -796,7 +818,10 @@ public final class PageSyncer {
         String kind =
             baseline.isEmpty()
                 ? "unknown baseline"
-                : digest.equals(baseline) ? "remote-only drift" : "conflict";
+                : (digest.equals(baseline)
+                        || (snapshot != null && localInput.equals(snapshot.local())))
+                    ? "remote-only drift"
+                    : "conflict";
         String detail =
             "Remote version "
                 + versionNumber(current)
@@ -828,8 +853,8 @@ public final class PageSyncer {
     if (equal) {
       String id = String.valueOf(current.get("id"));
       String url = pageUrl(client.baseUrl(), current);
-      if (opts.baselineDirectory != null)
-        new MergeSnapshot(localInput, storage, versionNumber(current), snapshotContext)
+      if (opts.baselineDirectory != null && !historyEqual)
+        new MergeSnapshot(localInput, storage, storage, versionNumber(current), snapshotContext)
             .save(opts.baselineDirectory, client.baseUrl(), id);
       log.info("unchanged " + path + ": " + url);
       return new SyncResult(SyncAction.UNCHANGED, path, meta.space, meta.title, id, url, "");
@@ -886,15 +911,14 @@ public final class PageSyncer {
       if (versionNumber(verified) != versionNumber(page))
         throw new SyncException(
             "Published but verification version changed; snapshots not advanced");
-      new MergeSnapshot(
-              localInput,
-              String.valueOf(currentStorageValue(verified)),
-              versionNumber(verified),
-              snapshotContext)
+      if (!hasStorageBody(verified))
+        throw new SyncException("Published but verification body missing; snapshots not advanced");
+      String actual = (String) currentStorageValue(verified);
+      new MergeSnapshot(localInput, storage, actual, versionNumber(verified), snapshotContext)
+          .save(opts.baselineDirectory, client.baseUrl(), pageId);
+      new PublishBaseline(ContentHash.contentHash(actual), versionNumber(verified))
           .save(opts.baselineDirectory, client.baseUrl(), pageId);
     }
-    new PublishBaseline(digest, versionNumber(page))
-        .save(opts.baselineDirectory, client.baseUrl(), pageId);
     String url = pageUrl(client.baseUrl(), page);
     log.info(action.wireName() + " " + path + ": " + url);
     return new SyncResult(action, path, meta.space, meta.title, pageId, url, "");
@@ -914,6 +938,12 @@ public final class PageSyncer {
 
   private static String appearanceOrDefault(Meta meta) {
     return meta.contentAppearance.isEmpty() ? "full-width" : meta.contentAppearance;
+  }
+
+  private static boolean hasStorageBody(Map<String, Object> page) {
+    return page.get("body") instanceof Map<?, ?> body
+        && body.get("storage") instanceof Map<?, ?> storage
+        && storage.get("value") instanceof String;
   }
 
   private static Object currentStorageValue(Map<String, Object> page) {

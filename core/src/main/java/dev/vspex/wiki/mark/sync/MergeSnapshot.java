@@ -6,7 +6,12 @@ import java.nio.file.*;
 import java.util.Map;
 
 /** Accepted local input and remote representation; never a display-normalized body. */
-record MergeSnapshot(String local, String remote, long version, String context) {
+record MergeSnapshot(String local, String submitted, String remote, long version, String context) {
+  // Legacy snapshots cannot distinguish retained contributions from server rewrites.
+  MergeSnapshot(String local, String remote, long version, String context) {
+    this(local, remote, remote, version, context);
+  }
+
   private static Path file(Path dir, String site, String id) {
     if (dir == null) throw new SyncException("Merge requires a persistent baseline directory");
     return dir.resolve(
@@ -20,14 +25,21 @@ record MergeSnapshot(String local, String remote, long version, String context) 
     try {
       var map = (Map<?, ?>) Json.parse(Files.readString(path));
       String local = (String) map.get("local"), remote = (String) map.get("remote");
-      if (!Long.valueOf(1).equals(((Number) map.get("schema")).longValue())
+      long schema = ((Number) map.get("schema")).longValue();
+      String submitted = schema == 1 ? remote : (String) map.get("submitted");
+      if ((schema != 1 && schema != 2)
+          || (schema == 2 && !ContentHash.contentHash(submitted).equals(map.get("submittedHash")))
           || !ContentHash.contentHash(local).equals(map.get("localHash"))
           || !ContentHash.contentHash(remote).equals(map.get("remoteHash")))
         throw new IllegalArgumentException();
       if (((Number) map.get("version")).longValue() < 1 || !(map.get("context") instanceof String))
         throw new IllegalArgumentException();
       return new MergeSnapshot(
-          local, remote, ((Number) map.get("version")).longValue(), (String) map.get("context"));
+          local,
+          submitted,
+          remote,
+          ((Number) map.get("version")).longValue(),
+          (String) map.get("context"));
     } catch (RuntimeException e) {
       throw new SyncException(
           "Invalid merge snapshot; reconcile source and remote before publishing");
@@ -46,7 +58,11 @@ record MergeSnapshot(String local, String remote, long version, String context) 
                   "context",
                   context,
                   "schema",
-                  1,
+                  2,
+                  "submitted",
+                  submitted,
+                  "submittedHash",
+                  ContentHash.contentHash(submitted),
                   "local",
                   local,
                   "remote",

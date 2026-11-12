@@ -5,7 +5,9 @@ publishes `.md` pages to Confluence and imports existing pages as Markdown
 (Cloud / Data Center / Server v1 REST API).
 
 - Plugin id: `dev.vspex.confluence-publish`
-- Group: `dev.vspex`, version `0.5.0`
+<!-- wiki-mark-version:start -->
+- Group: `dev.vspex`, version `0.8.0`
+<!-- wiki-mark-version:end -->
 
 ## Requirements
 
@@ -34,14 +36,24 @@ pluginManagement {
 
 `build.gradle`:
 
+<!-- wiki-mark-version:start -->
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.5.0'
+  id 'dev.vspex.confluence-publish' version '0.8.0'
 }
 ```
+<!-- wiki-mark-version:end -->
 
 No dependency on the `java` plugin; safe to apply to the root or any project.
 It supports Gradle's configuration cache.
+
+`build` also runs `updateReadmeVersion`, which synchronizes marked version
+references in this README from the plugin version in the root `build.gradle`.
+Run `.\gradlew.bat updateReadmeVersion` to update documentation without running
+the full build. Keep the `wiki-mark-version` HTML comment markers around the
+managed blocks; only version values inside those blocks are updated. The task
+writes the file only when a value changes. Commit README updates alongside a
+version change so the displayed examples match.
 
 ## Basic setup
 
@@ -59,9 +71,10 @@ Body text.
 
 2. Configure the connection (`build.gradle`):
 
+<!-- wiki-mark-version:start -->
 ```groovy
 plugins {
-  id 'dev.vspex.confluence-publish' version '0.5.0'
+  id 'dev.vspex.confluence-publish' version '0.8.0'
 }
 
 confluence {
@@ -70,6 +83,7 @@ confluence {
   username = 'me@example.com' // Cloud only, see Authentication
 }
 ```
+<!-- wiki-mark-version:end -->
 
 3. Store the token as described below, then compile offline, preview, and publish:
 
@@ -159,15 +173,17 @@ baseline versions, the last editor and time, and a unified diff; run with
 `--force` after reviewing the diff, or re-import to refresh the baseline.
 Preview never writes. Concurrent HTTP 409 updates fail
 without retrying against a newer version. The drift check compares raw storage
-hashes: when Confluence normalizes saved markup (macro IDs), the next publish
-may report a one-time remote-only drift notice — republish with `--force` to
-refresh.
+hashes. Publish records both submitted markup and the verified stored body, so
+server rewriting does not cause repeated drift. Matching local input, render
+context, remote body and version skip writes, including with `--force`. Older
+ambiguous history may need one reviewed forced publish to establish this tracking.
+See [0.8.0 release notes](docs/release-notes/0.8.0.md).
 
 `--changed` / `onlyChanged` check all selected pages remotely; local digests cannot
 hide wiki edits. `changesOnly` is retained for compatibility: identical storage
 always skips all remote writes, including attachments and labels. Attachment-only
 or label-only edits therefore require a body change to publish. `--force` permits
-overwriting drift but does not bypass exact-equality skipping or version checks.
+overwriting drift but does not bypass raw-equality or verified-history skipping, or version checks.
 `confluenceResetState` clears legacy page and diagram hashes while preserving
 publish baselines. See [import and drift behavior](docs/confluence-import.md).
 
@@ -351,10 +367,11 @@ This example uses H1 titles, directory-derived parents, local change selection,
 offline verification during `check`, and PNG diagrams. Apply `base` to supply
 `check` in a project without another lifecycle plugin such as `java`.
 
+<!-- wiki-mark-version:start -->
 ```groovy
 plugins {
   id 'base'
-  id 'dev.vspex.confluence-publish' version '0.5.0'
+  id 'dev.vspex.confluence-publish' version '0.8.0'
 }
 
 confluence {
@@ -394,6 +411,7 @@ confluence {
   }
 }
 ```
+<!-- wiki-mark-version:end -->
 
 Put an H1 in each page under `docs/wiki`, then run `./gradlew check` or
 `./gradlew confluencePublish --preview`. Diagram conversion requires a running

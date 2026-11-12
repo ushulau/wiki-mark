@@ -63,6 +63,9 @@ class PageSyncerTest {
     final List<List<Object>> writes = new ArrayList<>();
     int nextId = 100;
     boolean failUpdate, failLabels;
+    java.util.function.UnaryOperator<String> storedBody = body -> body;
+    int pageReads;
+    boolean missingReadbackBody, changedReadbackVersion;
 
     @Override
     public String baseUrl() {
@@ -110,9 +113,13 @@ class PageSyncerTest {
 
     @Override
     public Map<String, Object> getPageById(String pageId) {
+      pageReads++;
       for (Map<String, Object> page : pages.values()) {
         if (page.get("id").equals(pageId)) {
-          return new LinkedHashMap<>(page);
+          var result = new LinkedHashMap<>(page);
+          if (missingReadbackBody) result.remove("body");
+          if (changedReadbackVersion) result.put("version", Map.of("number", 999L));
+          return result;
         }
       }
       throw new AssertionError("unknown page id " + pageId);
@@ -122,7 +129,7 @@ class PageSyncerTest {
     public Map<String, Object> createPage(
         String space, String title, String body, String type, String parentId) {
       writes.add(List.of("create", title));
-      return seed(space, title, type, body, parentId);
+      return seed(space, title, type, storedBody.apply(body), parentId);
     }
 
     @Override
@@ -165,7 +172,7 @@ class PageSyncerTest {
         throw new AssertionError("unknown page id " + page.get("id"));
       }
       Map<String, Object> storage = new LinkedHashMap<>();
-      storage.put("value", content);
+      storage.put("value", storedBody.apply(content));
       stored.put("body", new LinkedHashMap<>(Map.of("storage", storage)));
       // Production version numbers arrive as Long from JSON; accept any Number like the product.
       long number = ((Number) ((Map<?, ?>) stored.get("version")).get("number")).longValue();

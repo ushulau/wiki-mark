@@ -219,26 +219,32 @@ pages; the import manifest does not force an update to its recorded ID and is no
 a last-published baseline. Publish drift protection independently compares local
 and remote storage using version tags and successful-publish state. Review existing publishing settings such as configured
 parents, title hashing, and layout before reusing them for imported pages.
-A newly imported file publishes on the next run even when nothing changed
-locally, so `confluenceResetState` is not needed for a brand new page.
+A newly imported file is checked on the next publish run. If its compiled storage
+already matches the remote page, publishing skips remote writes. No state reset is needed.
 
 ## Publish drift protection
 
-Every successful page create or update includes a `[v<sha1>]` version-message tag.
-After the complete page operation succeeds, the publisher also writes a baseline
-containing `storageHash` and `versionNumber` under
-`.gradle/confluence-publish/baselines/`, keyed by site and page ID. The import
-manifest is provenance, not this baseline. A tag supports fresh clones; local
-state supports wiki edits that remove the tag. Missing or malformed state is
-unknown. State newer than the remote version, or contradictory evidence at the
-same version, is not trusted. A newer remote version tag supersedes older state.
+Every successful page create or update includes a `[v<sha1>]` version-message tag
+for the submitted markup. After the complete page operation and readback succeed,
+the publisher writes a baseline containing the **verified stored** `storageHash`
+and `versionNumber` under `.gradle/confluence-publish/baselines/`, keyed by site
+and page ID. It also records compiled input, submitted markup, stored markup and
+rendering context in its merge snapshot. Submitted and stored markup can differ
+because Confluence rewrites storage when saving.
+
+The import manifest is provenance, not a publish baseline. A matching stored hash
+and version take precedence over a version-message tag for submitted markup.
+Tags alone cannot establish equivalence between rewritten representations in a fresh
+checkout. Missing history and contradictory evidence remain conservative.
 
 | Local / remote state | Publish behavior |
 | --- | --- |
 | Identical raw storage | No prompt or remote writes, including attachments and labels. |
-| Remote matches baseline; local differs | Publish without prompting. |
-| Local matches baseline; remote differs | Show remote-only drift; default to keeping remote. |
-| Both differ from baseline | Show conflict; default to keeping remote. |
+| Compiled input/context and remote body/version match verified history, with no retained remote contributions | Skip all remote writes, even if submitted and stored markup differ. |
+| Remote body and version match the baseline; local differs, with no retained remote contributions | Publish without prompting. |
+| Local input is unchanged; remote differs from accepted history | Show remote-only drift; default to keeping remote. |
+| Local and remote both changed | Show conflict; default to keeping remote. |
+| Retained remote contributions would be discarded | Require overwrite consent, or use `--merge` to preserve them. |
 | No trusted baseline | Show unknown-baseline drift; require an explicit decision. |
 | No remote page | Create without prompting. |
 
@@ -260,8 +266,8 @@ mark sync --files 'documentation/wiki/*.md' --force
 
 `--changed` / `onlyChanged` now check every selected page remotely so local file
 hashes cannot hide wiki edits. `--only` still restricts the selection. `changesOnly`
-is retained for compatibility; exact equality skips writes regardless of that flag.
-Because equal storage skips the whole remote operation, an attachment-only or
+is retained for compatibility; raw equality and matching verified history skip writes
+regardless of that flag. Both skip the whole remote operation, so an attachment-only or
 label-only edit is not published by that run, even with `--force`. Include a body
 change when intentionally updating those assets or metadata. This is an explicit
 behavior change from earlier versions.
@@ -294,7 +300,7 @@ core jars on the Java classpath; the repository does not install a `mark` launch
 For example, after building, PowerShell can invoke:
 
 ```powershell
-java -cp "cli/build/libs/cli-0.5.0.jar;core/build/libs/core-0.5.0.jar" dev.vspex.wiki.mark.cli.Main import --help
+java -cp "cli/build/libs/cli-0.8.0.jar;core/build/libs/core-0.8.0.jar" dev.vspex.wiki.mark.cli.Main import --help
 ```
 
 Use `:` as the classpath separator on Unix. The CLI resolves `documents/wiki`
@@ -350,3 +356,19 @@ Volatile macro IDs are not normalized for drift decisions: their bytes affect st
 Only displayed diffs normalize them, with a warning if normalization hides a raw difference.
 A live-server normalization measurement has not been performed; offline regression tests cover
 that distinction. Import provenance manifests remain separate from publish state.
+
+
+### Verified publish history (0.8.0)
+
+After publishing, the existing verification GET supplies the exact stored body for
+both baseline hashing and merge history. History records compiled input, submitted
+markup, stored markup, rendering context and remote version. An unchanged input and
+unchanged remote at the accepted version skip publishing even when Confluence rewrote
+the submitted markup. This also applies to `--force`. Remote revisions or body changes
+still trigger drift protection. Preview never advances this history.
+
+Schema-1 history cannot distinguish server rewrites from retained remote contributions;
+ambiguous history remains protected. After review, one forced publish establishes the
+new history. No semantic normalization is used to silently migrate old baselines.
+Lossless re-import remains an option when the remote representation should become source.
+Offline tests simulate server rewrites; no live-server verification was run for this fix.
