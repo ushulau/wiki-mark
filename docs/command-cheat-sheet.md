@@ -97,7 +97,7 @@ and a token, including for preview.
 - Local-only edits publish silently. Remote drift or an unknown baseline requires
   console confirmation; without a console, the command fails and requires `--force`.
 - A lossless import records the baseline, so editing an import and publishing
-  needs no `--force`. Re-import after `--force` to refresh a stale baseline.
+  needs no `--force`. Re-import to refresh a stale baseline; a successful `--force` publish also refreshes it.
 - Conflict output names the remote and baseline versions, the last editor and
   time, and a unified diff; server-side normalization (macro IDs) can cause a
   one-time remote-only drift notice — republish with `--force` to refresh.
@@ -369,3 +369,10 @@ For behavior and recovery details, see the [import/publish guide](confluence-imp
 
 `--merge` cannot be combined with `--force` or CLI compile-only mode. Existing-page
 merges preserve auxiliary resources; missing attachment uploads require separate reconciliation.
+
+### Import baseline refresh
+
+Verified same-target lossless imports refresh the local baseline even without `--verify`
+(the exact compile check runs internally). `--overwrite` replaces older state and invalidates
+older merge history. `--no-baseline` preserves previous state. Local baselines belong to each
+checkout; removing `.gradle` removes them. Use a qualifying lossless import to establish them again.

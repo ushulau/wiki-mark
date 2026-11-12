@@ -116,6 +116,79 @@ class ImportBaselineTest {
   }
 
   @Test
+  void overwriteRefreshesBaselineDespiteCopiedTagAndStaleMergeHistory() throws Exception {
+    var store = new PageSyncerTest.FakePageStore();
+    String id = String.valueOf(store.seed("DOC", "Doc", "page", "<p>Imported</p>").get("id"));
+    setVersion(
+        store,
+        id,
+        3L,
+        ContentHash.formatVersionMessage("copied tag", ContentHash.contentHash("old")),
+        null,
+        null);
+    var source = new FakeImportSource(id, "DOC", "Doc", 3L, "<p>Imported</p>");
+    var directory = baselineDirectory();
+    new PublishBaseline(ContentHash.contentHash("old"), 1).save(directory, source.base, id);
+    new MergeSnapshot("<p>local</p>", "<p>remote</p>", 1, "old context")
+        .save(directory, source.base, id);
+    Path doc = lossless(source, "guide.md").document();
+    new PublishBaseline(ContentHash.contentHash("old"), 1).save(directory, source.base, id);
+    new MergeSnapshot("<p>local</p>", "<p>remote</p>", 1, "old context")
+        .save(directory, source.base, id);
+    var report =
+        PageImporter.run(
+            project,
+            new ImportOptions(
+                id, "", "guide.md", true, false, true, false, "", List.of(), "", "", false),
+            source);
+    assertTrue(report.baselineStatus().startsWith("Publish baseline recorded"));
+    org.junit.jupiter.api.Assertions.assertNull(MergeSnapshot.read(directory, source.base, id));
+    Files.writeString(doc, Files.readString(doc).replace("<p>Imported</p>", "<p>Edited</p>"));
+    var result =
+        PageSyncer.run(List.of(doc), publishOpts(false), store, new PageSyncerTest.RecordingLog());
+    assertEquals(List.of(), result.failures());
+    assertEquals(1, store.count("update"));
+  }
+
+  @Test
+  void newerRemoteVersionWithSameStorageStillRequiresConsentForLocalEdit() throws Exception {
+    var store = new PageSyncerTest.FakePageStore();
+    String id = String.valueOf(store.seed("DOC", "Doc", "page", "<p>Imported</p>").get("id"));
+    setVersion(store, id, 3L, "", null, null);
+    Path doc =
+        lossless(new FakeImportSource(id, "DOC", "Doc", 3L, "<p>Imported</p>"), "guide.md")
+            .document();
+    Files.writeString(doc, Files.readString(doc).replace("<p>Imported</p>", "<p>Edited</p>"));
+    setVersion(store, id, 4L, "", null, null);
+    var log = new PageSyncerTest.RecordingLog();
+    var result = PageSyncer.run(List.of(doc), publishOpts(false), store, log);
+    assertEquals(1, result.failures().size());
+    assertEquals(0, store.count("update"));
+    assertTrue(log.errors.get(0).contains("Remote version 4 (baseline version 3)"));
+  }
+
+  @Test
+  void failedImportKeepsExistingBaselineAndMergeHistory() throws Exception {
+    var source = new FakeImportSource("7", "DOC", "Doc", 3L, "<p>Imported</p>");
+    lossless(source, "guide.md");
+    var baseline = new PublishBaseline(ContentHash.contentHash("old"), 1);
+    baseline.save(baselineDirectory(), source.base, "7");
+    var merge = new MergeSnapshot("local", "remote", 1, "context");
+    merge.save(baselineDirectory(), source.base, "7");
+    Files.writeString(project.resolve("guide.md"), "existing");
+    org.junit.jupiter.api.Assertions.assertThrows(
+        RuntimeException.class,
+        () ->
+            PageImporter.run(
+                project,
+                new ImportOptions(
+                    "7", "", "guide.md", false, false, true, false, "", List.of(), "", "", false),
+                source));
+    assertEquals(baseline, PublishBaseline.read(baselineDirectory(), source.base, "7"));
+    assertEquals(merge, MergeSnapshot.read(baselineDirectory(), source.base, "7"));
+  }
+
+  @Test
   void importThenEditThenPublishWithoutForce() throws Exception {
     String storage = "<p>Hello</p>";
     var store = new PageSyncerTest.FakePageStore();

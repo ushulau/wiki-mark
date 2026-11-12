@@ -48,6 +48,24 @@ public record PublishBaseline(String storageHash, long versionNumber) {
         ContentHash.contentHash(site.replaceAll("/+$", "") + "\n" + id) + ".json");
   }
 
+  /** Import explicitly accepts the fetched remote body and invalidates older merge history. */
+  public void saveImported(Path directory, String site, String id) throws IOException {
+    if (directory == null) return;
+    Path baseline = file(directory, site, id);
+    String name = baseline.getFileName().toString();
+    Files.deleteIfExists(baseline.resolveSibling(name.replace(".json", ".merge.json")));
+    save(directory, site, id);
+  }
+
+  /** Exact same-version local evidence takes precedence over a copied version-message tag. */
+  public static String resolve(
+      String tag, long remoteVersion, PublishBaseline state, String remoteHash) {
+    if (state != null
+        && state.versionNumber == remoteVersion
+        && state.storageHash.equals(remoteHash)) return state.storageHash;
+    return resolve(tag, remoteVersion, state);
+  }
+
   /** Conflicting same-version evidence and state from the future are not trusted. */
   public static String resolve(String tag, long remoteVersion, PublishBaseline state) {
     if (state == null) return tag;

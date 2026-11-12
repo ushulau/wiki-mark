@@ -176,7 +176,8 @@ public final class PageImporter {
     }
     String hash = ContentHash.contentHash(page.storage());
     new PublishBaseline(hash, page.version())
-        .save(project.resolve(".gradle/confluence-publish/baselines"), source.baseUrl(), page.id());
+        .saveImported(
+            project.resolve(".gradle/confluence-publish/baselines"), source.baseUrl(), page.id());
     return "Publish baseline recorded: version "
         + page.version()
         + " (hash "

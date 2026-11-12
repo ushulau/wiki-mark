@@ -785,8 +785,13 @@ public final class PageSyncer {
               opts.baselineDirectory, client.baseUrl(), String.valueOf(current.get("id")));
       String baseline =
           PublishBaseline.resolve(
-              ContentHash.readContentHash(versionMessage(current)), versionNumber(current), state);
+              ContentHash.readContentHash(versionMessage(current)),
+              versionNumber(current),
+              state,
+              ContentHash.contentHash(remote));
       drift = drift || baseline.isEmpty() || !ContentHash.contentHash(remote).equals(baseline);
+      // A newer remote revision is drift even when its body was restored to the accepted hash.
+      drift = drift || (state != null && state.versionNumber() != versionNumber(current));
       if (drift) {
         String kind =
             baseline.isEmpty()

@@ -551,3 +551,8 @@ keep the ignored baseline directory to retain remote contributions across future
 An ordinary publish requires explicit overwrite consent when it would remove those contributions.
 
 See [merge behavior and validation](docs/publish-merge.md) for limits and recovery guidance.
+
+A qualifying lossless re-import also clears older merge snapshots for that page. Exact local
+baseline evidence at the fetched version overrides stale copied version-message hashes.
+Baselines belong to each checkout; after deleting `.gradle`, use a lossless import to establish
+them again. See the [0.7.0 fix notes](docs/release-notes/0.7.0.md).

@@ -332,3 +332,21 @@ Publish supports opt-in `--merge` for independent body changes. Full local/remot
 are required; import manifests and historical hash-only baselines alone are insufficient.
 Establish tracking through exact local/remote equality or a successful deliberate publish.
 See [publish merge](publish-merge.md) for preview commands, scope, and recovery.
+
+## Baseline refresh and strict drift checks
+
+A same-target, byte-exact lossless import accepts the fetched revision and invalidates older
+merge snapshots for that page. This also handles version messages carrying a hash copied from
+an older revision: an exact hash and version in local state take precedence over that tag.
+`--verify` is optional for recording state because import always runs the exact compile check.
+Skipped and failed imports do not refresh state. `--no-baseline` retains existing state.
+
+Baselines are local to each checkout. Deleting `.gradle` removes local history; re-importing
+in lossless mode can establish it again. A differing remote revision or exact storage hash
+still requires consent when publishing local edits. Exact local/remote equality continues to
+skip all remote writes, including with `--force`. HTTP 409 still fails without overwrite retries.
+
+Volatile macro IDs are not normalized for drift decisions: their bytes affect storage hashes.
+Only displayed diffs normalize them, with a warning if normalization hides a raw difference.
+A live-server normalization measurement has not been performed; offline regression tests cover
+that distinction. Import provenance manifests remain separate from publish state.
