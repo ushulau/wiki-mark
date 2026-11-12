@@ -109,6 +109,20 @@ class PublishDriftFunctionalTest {
       String drift = runner("confluencePublish", "--changed").buildAndFail().getOutput();
       assertTrue(drift.contains("remote-only drift"));
       assertEquals(2, writes.get());
+      body.set("<p>local edit</p><p>wiki addition</p>");
+      version.incrementAndGet();
+      Files.writeString(file, "<!-- Space: DEMO -->\n<!-- Title: Example -->\n\nlocal revision");
+      runner("confluencePublish", "--merge", "--preview").build();
+      assertEquals(2, writes.get());
+      runner("confluencePublish", "--merge").build();
+      assertEquals("<p>local revision</p><p>wiki addition</p>", body.get());
+      assertEquals(3, writes.get());
+      runner("confluencePublish", "--merge").build();
+      assertEquals(3, writes.get());
+      runner("confluencePublish").buildAndFail();
+      assertEquals(3, writes.get());
+      runner("confluencePublish", "--merge", "--force").buildAndFail();
+      assertEquals(3, writes.get());
     } finally {
       server.stop(0);
     }

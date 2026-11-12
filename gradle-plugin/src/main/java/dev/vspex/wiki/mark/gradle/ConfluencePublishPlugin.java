@@ -44,6 +44,7 @@ public class ConfluencePublishPlugin implements Plugin<Project> {
               task.getPreview().convention(false);
               task.getLossless().convention(false);
               task.getVerify().convention(false);
+              task.getNoBaseline().convention(false);
               task.getSpace().convention("");
               task.getTitle().convention("");
               task.getParents().convention(List.of());

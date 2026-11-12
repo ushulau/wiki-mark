@@ -301,7 +301,8 @@ class PageImporterTest {
       throws IOException {
     return PageImporter.run(
         project,
-        new ImportOptions("7", "", output, overwrite, false, true, verify, "", List.of(), "", ""),
+        new ImportOptions(
+            "7", "", output, overwrite, false, true, verify, "", List.of(), "", "", false),
         source);
   }
 
@@ -393,7 +394,8 @@ class PageImporterTest {
                 "NEW",
                 List.of("Top", "Sub"),
                 "New title",
-                ""),
+                "",
+                false),
             source);
     assertTrue(retargeted.markdown().contains("<!-- Space: NEW -->\n"));
     assertTrue(retargeted.markdown().contains("<!-- Parent: Top -->\n"));
@@ -409,7 +411,8 @@ class PageImporterTest {
     var preview =
         PageImporter.run(
             project,
-            new ImportOptions("7", "", "guide.md", false, true, true, false, "", List.of(), "", ""),
+            new ImportOptions(
+                "7", "", "guide.md", false, true, true, false, "", List.of(), "", "", false),
             source);
     assertFalse(Files.exists(project.resolve("documents")));
     assertEquals(0, source.downloads);
@@ -476,7 +479,8 @@ class PageImporterTest {
                 "",
                 List.of(),
                 "",
-                "documentation/wiki"),
+                "documentation/wiki",
+                false),
             source);
     assertEquals(project.resolve("documentation/wiki/releases/2026.md"), report.document());
     assertEquals(source.storage, compile(report.markdown()));
@@ -556,7 +560,8 @@ class PageImporterTest {
         () ->
             PageImporter.run(
                 project,
-                new ImportOptions("7", "", "a.md", false, true, false, true, "", List.of(), "", ""),
+                new ImportOptions(
+                    "7", "", "a.md", false, true, false, true, "", List.of(), "", "", false),
                 source));
   }
 
@@ -567,7 +572,18 @@ class PageImporterTest {
         PageImporter.run(
             project,
             new ImportOptions(
-                "7", "", "root.md", false, false, true, true, "DEST", List.of(""), "Copy", ""),
+                "7",
+                "",
+                "root.md",
+                false,
+                false,
+                true,
+                true,
+                "DEST",
+                List.of(""),
+                "Copy",
+                "",
+                false),
             source);
     var parsed = MetadataParser.parseDocument(result.markdown(), new MetadataParser.ParseOptions());
     assertEquals(List.of(), parsed.meta().parents);

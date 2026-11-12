@@ -44,6 +44,24 @@ class PageSyncerHttpTest {
   }
 
   @Test
+  void mergeBodyUpdateOmitsPropertiesAndDoesNotRetryConflict() throws Exception {
+    try (StubServer server = new StubServer()) {
+      var page = remotePage(server.baseUrl(), "7", "Example", "<p>old</p>");
+      server.script(StubServer.Stub.json(page), StubServer.Stub.text("conflict", 409));
+      var client = new ConfluenceClient(server.baseUrl(), "", "tok");
+      client.updateBody(page, "<p>new</p>", false, "merge");
+      var payload = (Map<?, ?>) server.requests().get(0).bodyJson();
+      org.junit.jupiter.api.Assertions.assertFalse(payload.containsKey("metadata"));
+      assertEquals(2L, ((Map<?, ?>) payload.get("version")).get("number"));
+      org.junit.jupiter.api.Assertions.assertThrows(
+          dev.vspex.wiki.mark.client.ConfluenceException.class,
+          () -> client.updateBody(page, "<p>new</p>", false, "merge"));
+      assertEquals(2, server.requests().size());
+      server.assertDone();
+    }
+  }
+
+  @Test
   void createFlowOverHttp(@TempDir Path tmp) throws Exception {
     Files.createDirectories(tmp.resolve("assets"));
     Files.write(tmp.resolve("assets/a.png"), new byte[] {1, 2, 3});

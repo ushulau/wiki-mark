@@ -153,8 +153,15 @@ requires both a resolved title and space. The publish preview includes the `arti
 Publishing always compares raw local and remote storage and records a version-message
 hash plus per-page successful-publish state. Local-only edits publish silently;
 remote drift or unknown baselines show a unified diff and require an interactive
-confirmation or `--force`. Preview never writes. Concurrent HTTP 409 updates fail
-without retrying against a newer version.
+confirmation or `--force`. A lossless import records the baseline, so editing an
+import and publishing needs no `--force`. Conflict output names the remote and
+baseline versions, the last editor and time, and a unified diff; run with
+`--force` after reviewing the diff, or re-import to refresh the baseline.
+Preview never writes. Concurrent HTTP 409 updates fail
+without retrying against a newer version. The drift check compares raw storage
+hashes: when Confluence normalizes saved markup (macro IDs), the next publish
+may report a one-time remote-only drift notice — republish with `--force` to
+refresh.
 
 `--changed` / `onlyChanged` check all selected pages remotely; local digests cannot
 hide wiki edits. `changesOnly` is retained for compatibility: identical storage
@@ -191,7 +198,11 @@ downloading attachment bodies; collision checks still apply.
 Use `--lossless --verify` to preserve the raw body exactly, including macros,
 layout, entities, CDATA, and original line endings. Lossless mode emits HTML comment
 headers and marker-wrapped storage. `--space`, `--parent`, and `--title` retarget
-headers without modifying storage and require lossless mode.
+headers without modifying storage and require lossless mode. A successful
+non-preview lossless import that targets the source page records a publish
+baseline (version plus storage hash) under `.gradle/confluence-publish/baselines`;
+previews, retargeted imports, lossy imports, and `--no-baseline` skip it with an
+explanatory line.
 
 Default Markdown imports preserve supported text, headings, lists, code, and tables, download
 referenced attachments into `<document-stem>.assets/`, and rewrite their links.
@@ -201,7 +212,8 @@ records the source page and version. Lossy conversions produce warnings and reta
 the original storage in a `.confluence-storage.xml` sidecar. Metadata that the
 existing parser cannot preserve, including embedded newlines, fails before writing.
 
-Confluence and local publishing state are read-only during import. Files are
+Confluence stays read-only during import, but a qualifying lossless import writes
+one local publishing-state file: the publish baseline described above. Files are
 staged before committing, with rollback on replacement failures; Markdown is
 installed last. Downloads are limited to 50 MiB per asset and 200 MiB per import,
 with a 30-second request timeout and at most five redirects. HTTPS CDN redirects
@@ -523,3 +535,19 @@ This repository's root `build` depends on `spotlessApply` for every module;
 formatting runs before Java compilation and Spotless checks. Format separately
 with `./gradlew :spotlessApply`. These are repository build settings; applying
 the published Confluence plugin does not install Spotless into a consumer project.
+
+### Merging publish drift
+
+Use `./gradlew confluencePublish --merge --preview` to review a body merge, then
+`./gradlew confluencePublish --merge` to publish it. CLI equivalents are `--merge --dry-run`
+and `--merge`. Conflicting edits stop without remote writes; `--merge` and `--force`
+are mutually exclusive.
+
+Merge tracking needs full snapshots from a successful publish or an exact local/remote match.
+Older hash-only baselines cannot merge existing differences. Existing-page merges preserve
+remote labels, attachments, ancestry, appearance, and emoji. New attachment references must
+already exist remotely. Local auxiliary changes are deferred. Source Markdown stays unchanged;
+keep the ignored baseline directory to retain remote contributions across future publishes.
+An ordinary publish requires explicit overwrite consent when it would remove those contributions.
+
+See [merge behavior and validation](docs/publish-merge.md) for limits and recovery guidance.

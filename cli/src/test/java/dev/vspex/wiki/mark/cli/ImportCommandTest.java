@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sun.net.httpserver.HttpServer;
 import dev.vspex.wiki.mark.json.Json;
+import dev.vspex.wiki.mark.sync.ContentHash;
+import dev.vspex.wiki.mark.sync.PublishBaseline;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -202,7 +204,84 @@ class ImportCommandTest {
       assertTrue(preview.outText().contains("<!-- Parent: Top -->"), preview.outText());
       assertTrue(preview.outText().contains(storage), preview.outText());
       assertTrue(preview.errText().contains("toc"), preview.errText());
+      assertTrue(
+          preview.outText().contains("Publish baseline skipped: preview writes nothing"),
+          preview.outText());
       assertFalse(Files.exists(project.resolve("documents")));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  void losslessImportRecordsBaselineUnlessDisabled() throws Exception {
+    var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    String storage = "<p>Baseline</p>";
+    server.createContext(
+        "/",
+        exchange -> {
+          Object payload =
+              exchange.getRequestURI().getPath().endsWith("/7")
+                  ? Map.of(
+                      "id",
+                      "7",
+                      "title",
+                      "Guide",
+                      "type",
+                      "page",
+                      "version",
+                      Map.of("number", 1),
+                      "space",
+                      Map.of("key", "ENG"),
+                      "ancestors",
+                      List.of(),
+                      "body",
+                      Map.of("storage", Map.of("value", storage)))
+                  : Map.of("results", List.of());
+          byte[] data = Json.write(payload).getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, data.length);
+          try (var output = exchange.getResponseBody()) {
+            output.write(data);
+          }
+        });
+    server.start();
+    try {
+      String base = "http://127.0.0.1:" + server.getAddress().getPort() + "/wiki";
+      var recorded = new MainTest.Capture();
+      assertEquals(
+          0,
+          ImportCommand.run(
+              new String[] {"--page-id=7", "--lossless", "--output=a.md", "-b", base},
+              recorded.out,
+              recorded.err,
+              Map.of("CONFLUENCE_TOKEN", "token"),
+              project),
+          recorded.errText());
+      assertTrue(
+          recorded.outText().contains("Publish baseline recorded: version 1"), recorded.outText());
+      Path baselines = project.resolve(".gradle/confluence-publish/baselines");
+      PublishBaseline baseline = PublishBaseline.read(baselines, base, "7");
+      assertEquals(1L, baseline.versionNumber());
+      assertEquals(ContentHash.contentHash(storage), baseline.storageHash());
+      var skipped = new MainTest.Capture();
+      assertEquals(
+          0,
+          ImportCommand.run(
+              new String[] {
+                "--page-id=7", "--lossless", "--no-baseline", "--output=b.md", "-b", base
+              },
+              skipped.out,
+              skipped.err,
+              Map.of("CONFLUENCE_TOKEN", "token"),
+              project),
+          skipped.errText());
+      assertTrue(
+          skipped.outText().contains("Publish baseline not recorded (--no-baseline)"),
+          skipped.outText());
+      try (var paths = Files.list(baselines)) {
+        assertEquals(1, paths.toList().size());
+      }
     } finally {
       server.stop(0);
     }

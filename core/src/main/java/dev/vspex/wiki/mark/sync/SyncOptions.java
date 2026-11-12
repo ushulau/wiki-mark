@@ -62,6 +62,9 @@ public class SyncOptions {
   /** Explicitly authorize overwriting remote drift (not concurrent version conflicts). */
   public boolean force = false;
 
+  /** Merge nonconflicting body edits using persistent snapshots. */
+  public boolean merge = false;
+
   /** Optional persistent last-published state directory; adapters set this beneath .gradle. */
   public java.nio.file.Path baselineDirectory;
 

@@ -145,6 +145,14 @@ public abstract class ConfluenceImportTask extends DefaultTask {
   public abstract Property<Boolean> getVerify();
 
   /**
+   * Whether to skip recording a publish baseline for this import, default false.
+   *
+   * @return whether baseline recording was disabled
+   */
+  @Internal
+  public abstract Property<Boolean> getNoBaseline();
+
+  /**
    * Retarget space for the import, or empty to keep the source space.
    *
    * @return the retarget space property
@@ -246,6 +254,16 @@ public abstract class ConfluenceImportTask extends DefaultTask {
   /**
    * Sets the corresponding command-line option.
    *
+   * @param value whether --no-baseline was requested
+   */
+  @Option(option = "no-baseline", description = "Do not record a publish baseline for this import")
+  public void noBaseline(boolean value) {
+    getNoBaseline().set(value);
+  }
+
+  /**
+   * Sets the corresponding command-line option.
+   *
    * @param value the space key from --space
    */
   @Option(option = "space", description = "Retarget the import into another space")
@@ -290,9 +308,11 @@ public abstract class ConfluenceImportTask extends DefaultTask {
                   getSpace().getOrElse(""),
                   getParents().getOrElse(List.of()),
                   getTitle().getOrElse(""),
-                  getWikiDir().get().getAsFile().toPath().toString()),
+                  getWikiDir().get().getAsFile().toPath().toString(),
+                  getNoBaseline().getOrElse(false)),
               new ConfluenceImportSource(client));
       getLogger().lifecycle(report.summary());
+      getLogger().lifecycle(report.baselineStatus());
       if (report.preview()) {
         report.files().forEach(path -> getLogger().lifecycle("Would write: {}", path));
         getLogger().lifecycle(report.markdown());

@@ -112,6 +112,19 @@ fail explicitly. Use `--parent=` to clear source ancestry and target a space roo
 The Markdown import path is unchanged unless
 `--lossless` is chosen.
 
+A successful non-preview lossless import that targets the source page also
+records a publish baseline (remote version plus storage hash) under
+`.gradle/confluence-publish/baselines`, using the same key and hash publish
+uses — the next publish sees no drift. No baseline is written for previews,
+retargeted imports (different space, title, or parents), lossy Markdown
+imports, or with `--no-baseline`; import always prints which case applied, for
+example `Publish baseline recorded: version 3 (hash 41b42668...)`. With
+`--overwrite`, an older baseline for the same page is replaced. The
+`.confluence.json` manifest keeps page ID, version, storage hash, and mode as a
+human-readable source record and is never read as a baseline.
+`confluenceResetState` deletes only the change-tracking state file and keeps
+baselines.
+
 ## Conversion and limitations
 
 | Confluence content | Imported representation |
@@ -312,3 +325,10 @@ See Atlassian's [Cloud v1 reference](https://developer.atlassian.com/cloud/confl
 and [Data Center REST reference](https://developer.atlassian.com/server/confluence/rest/latest/).
 This feature does not migrate the client to v2 or support `api.atlassian.com`
 gateway URLs. Deployment-specific availability and permissions still apply.
+
+## Merge after importing
+
+Publish supports opt-in `--merge` for independent body changes. Full local/remote snapshots
+are required; import manifests and historical hash-only baselines alone are insufficient.
+Establish tracking through exact local/remote equality or a successful deliberate publish.
+See [publish merge](publish-merge.md) for preview commands, scope, and recovery.

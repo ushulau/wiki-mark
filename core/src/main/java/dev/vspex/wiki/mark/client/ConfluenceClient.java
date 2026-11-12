@@ -481,6 +481,12 @@ public class ConfluenceClient implements PageStore {
         page, content, versionNumber(page) + 1, minorEdit, versionMessage, appearance, emoji);
   }
 
+  @Override
+  public Map<String, Object> updateBody(
+      Map<String, Object> page, String body, boolean minor, String message) {
+    return putPage(page, body, versionNumber(page) + 1, minor, message, null, "");
+  }
+
   private Map<String, Object> putPage(
       Map<String, Object> page,
       String content,
@@ -490,7 +496,8 @@ public class ConfluenceClient implements PageStore {
       String appearance,
       String emoji) {
     Map<String, Object> properties = new LinkedHashMap<>();
-    properties.put("content-appearance-published", Map.of("value", appearance));
+    if (appearance != null)
+      properties.put("content-appearance-published", Map.of("value", appearance));
     if (!emoji.isEmpty()) {
       String codepoint = Integer.toHexString(emoji.codePointAt(0));
       properties.put("emoji-title-draft", Map.of("value", codepoint));
@@ -506,7 +513,7 @@ public class ConfluenceClient implements PageStore {
     version.put("message", versionMessage);
     payload.put("version", version);
     payload.put("body", Map.of("storage", Map.of("value", content, "representation", "storage")));
-    payload.put("metadata", Map.of("properties", properties));
+    if (appearance != null) payload.put("metadata", Map.of("properties", properties));
     List<?> ancestors = page.get("ancestors") instanceof List<?> list ? list : List.of();
     Object last = ancestors.isEmpty() ? null : ancestors.get(ancestors.size() - 1);
     if (!"blogpost".equals(str(page, "type")) && last instanceof Map<?, ?> parent) {

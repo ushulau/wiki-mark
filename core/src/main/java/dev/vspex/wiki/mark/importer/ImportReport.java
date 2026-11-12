@@ -12,7 +12,8 @@ public record ImportReport(
     List<Path> files,
     List<String> warnings,
     int assetCount,
-    boolean preview) {
+    boolean preview,
+    String baselineStatus) {
   public ImportReport {
     files = List.copyOf(files);
     warnings = List.copyOf(warnings);

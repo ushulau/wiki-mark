@@ -292,6 +292,17 @@ public abstract class ConfluencePublishTask extends DefaultTask {
       description = "Explicitly overwrite remote drift; concurrent edits still fail.")
   public abstract Property<Boolean> getForce();
 
+  /**
+   * Whether to merge independent body edits.
+   *
+   * @return merge option
+   */
+  @Internal
+  @Option(
+      option = "merge",
+      description = "Merge independent body edits; preserve auxiliary resources.")
+  public abstract Property<Boolean> getMerge();
+
   /** Syncs the selected pages to Confluence. */
   @TaskAction
   public void publish() {
@@ -319,6 +330,9 @@ public abstract class ConfluencePublishTask extends DefaultTask {
     Path pagesDir = getPagesDir().getAsFile().get().toPath();
     SyncOptions opts = options(pagesDir);
     opts.force = getForce().getOrElse(false);
+    opts.merge = getMerge().getOrElse(false);
+    if (opts.merge && opts.force)
+      throw new SyncException("--merge and --force are mutually exclusive");
     opts.redactions = List.of(token);
     opts.baselineDirectory =
         getProjectDir().getAsFile().get().toPath().resolve(".gradle/confluence-publish/baselines");

@@ -544,6 +544,37 @@ public final class PageSyncer {
   public static SyncResult syncFile(
       Path file, SyncOptions opts, PageStore client, Map<String, String> pageTitles, Log log)
       throws IOException {
+    if (opts.baselineDirectory == null || opts.dryRun || opts.compileOnly || client == null)
+      return syncFileLocked(file, opts, client, pageTitles, log);
+    Path lockDirectory = opts.baselineDirectory.toAbsolutePath().getParent();
+    Files.createDirectories(lockDirectory);
+    try (var channel =
+        java.nio.channels.FileChannel.open(
+            lockDirectory.resolve(
+                ".publish-"
+                    + ContentHash.contentHash(
+                        opts.baselineDirectory.toAbsolutePath().normalize().toString())
+                    + ".lock"),
+            java.nio.file.StandardOpenOption.CREATE,
+            java.nio.file.StandardOpenOption.WRITE)) {
+      java.nio.channels.FileLock lock;
+      try {
+        lock = channel.tryLock();
+      } catch (java.nio.channels.OverlappingFileLockException e) {
+        throw new SyncException("Another publish is using this baseline directory");
+      }
+      if (lock == null) throw new SyncException("Another publish is using this baseline directory");
+      try (lock) {
+        return syncFileLocked(file, opts, client, pageTitles, log);
+      }
+    }
+  }
+
+  private static SyncResult syncFileLocked(
+      Path file, SyncOptions opts, PageStore client, Map<String, String> pageTitles, Log log)
+      throws IOException {
+    if (opts.merge && (opts.force || opts.compileOnly))
+      throw new SyncException("--merge cannot be combined with --force or compile-only");
     String path = file.toString();
     String text = Files.readString(file, StandardCharsets.UTF_8);
     Path sourceDir = file.toAbsolutePath().getParent();
@@ -630,28 +661,152 @@ public final class PageSyncer {
     Map<String, Object> page = client.findPage(meta.space, meta.title, meta.type);
     Map<String, Object> current =
         page == null ? null : client.getPageById(String.valueOf(page.get("id")));
+    String snapshotContext =
+        ContentHash.contentHash(
+            file.toAbsolutePath().normalize().toString()
+                + "\n"
+                + opts.dropH1
+                + "\n"
+                + imageAlign
+                + "\n"
+                + imageWidth
+                + "\n"
+                + imageHeight
+                + "\n"
+                + meta.layout
+                + "\n"
+                + meta.sidebar
+                + "\nrenderer-0.5");
+    String localInput = storage;
+    String identity = current == null ? "" : String.valueOf(current.get("id"));
+    MergeSnapshot snapshot =
+        opts.baselineDirectory == null || current == null
+            ? null
+            : MergeSnapshot.read(opts.baselineDirectory, client.baseUrl(), identity);
+    if (opts.merge && current != null) {
+      String remote = String.valueOf(currentStorageValue(current));
+      if (!storage.equals(remote)) {
+        if (snapshot == null
+            || !snapshotContext.equals(snapshot.context())
+            || snapshot.version() > versionNumber(current))
+          throw new SyncException(
+              "Merge unavailable: establish matching local/remote snapshots first");
+        String tag = ContentHash.readContentHash(versionMessage(current));
+        if (snapshot.version() == versionNumber(current) && !snapshot.remote().equals(remote))
+          throw new SyncException("Merge unavailable: contradictory snapshot version");
+        if (versionNumber(current) > snapshot.version()
+            && !tag.isEmpty()
+            && !tag.equals(ContentHash.contentHash(snapshot.remote())))
+          throw new SyncException(
+              "Merge unavailable: newer publication supersedes snapshot history");
+        storage =
+            StorageMerge.merge(
+                snapshot.remote(),
+                StorageMerge.merge(snapshot.local(), localInput, snapshot.remote()),
+                remote);
+      }
+      // Existing-page merge deliberately leaves auxiliary resources untouched.
+      Set<String> requiredNames = StorageMerge.attachmentNames(storage);
+      requiredNames.removeAll(StorageMerge.attachmentNames(remote));
+      for (Path attachment : attachments) requiredNames.add(attachment.getFileName().toString());
+      if (!requiredNames.isEmpty()) {
+        Set<String> names = new java.util.HashSet<>();
+        for (var attachment : client.getAttachments(identity))
+          names.add(String.valueOf(attachment.get("title")));
+        if (!names.containsAll(requiredNames))
+          throw new SyncException(
+              "Body-only merge cannot upload missing attachment; publish assets separately first");
+        log.warn(
+            "Body-only merge preserves existing attachments; local attachment changes deferred");
+      }
+      if (!meta.labels.isEmpty())
+        log.warn("Body-only merge preserves remote labels; local labels deferred");
+      if (opts.dryRun) {
+        log.info(
+            "merge preview "
+                + path
+                + "\n"
+                + StorageDiff.diffStorage(
+                    redact(remote, opts), redact(storage, opts), "remote", "merged"));
+        return new SyncResult(SyncAction.DRY_RUN, path, meta.space, meta.title, identity, "", "");
+      }
+      Map<String, Object> accepted = current;
+      if (!storage.equals(remote)) {
+        accepted =
+            client.updateBody(
+                current,
+                storage,
+                opts.minorEdit,
+                ContentHash.formatVersionMessage(
+                    opts.versionMessage, ContentHash.contentHash(storage)));
+        try {
+          long expected = versionNumber(accepted);
+          accepted = client.getPageById(identity);
+          if (versionNumber(accepted) != expected)
+            throw new SyncException("readback version changed");
+        } catch (RuntimeException e) {
+          throw new SyncException(
+              "Merge published but verification failed; snapshots not advanced. Reconcile the remote page before retrying.",
+              e);
+        }
+      }
+      String actual = String.valueOf(currentStorageValue(accepted));
+      try {
+        new MergeSnapshot(localInput, actual, versionNumber(accepted), snapshotContext)
+            .save(opts.baselineDirectory, client.baseUrl(), identity);
+        new PublishBaseline(ContentHash.contentHash(actual), versionNumber(accepted))
+            .save(opts.baselineDirectory, client.baseUrl(), identity);
+      } catch (IOException e) {
+        throw new SyncException(
+            "Merge accepted remotely but local tracking failed; reconcile before retrying.", e);
+      }
+      log.info(
+          (storage.equals(remote) ? "remote retained " : "merged ")
+              + path
+              + ": "
+              + pageUrl(client.baseUrl(), accepted));
+      return new SyncResult(
+          storage.equals(remote) ? SyncAction.UNCHANGED : SyncAction.UPDATED,
+          path,
+          meta.space,
+          meta.title,
+          identity,
+          pageUrl(client.baseUrl(), accepted),
+          "Merged body; auxiliary resources preserved");
+    }
+    boolean retainedRemote = snapshot != null && !snapshot.local().equals(snapshot.remote());
     boolean equal = current != null && storage.equals(currentStorageValue(current));
-    boolean drift = false;
+    boolean drift = retainedRemote && !equal;
     String diagnostic = "";
     if (current != null && !equal) {
       String remote = String.valueOf(currentStorageValue(current));
+      PublishBaseline state =
+          PublishBaseline.read(
+              opts.baselineDirectory, client.baseUrl(), String.valueOf(current.get("id")));
       String baseline =
           PublishBaseline.resolve(
-              ContentHash.readContentHash(versionMessage(current)),
-              versionNumber(current),
-              PublishBaseline.read(
-                  opts.baselineDirectory, client.baseUrl(), String.valueOf(current.get("id"))));
-      drift = baseline.isEmpty() || !ContentHash.contentHash(remote).equals(baseline);
+              ContentHash.readContentHash(versionMessage(current)), versionNumber(current), state);
+      drift = drift || baseline.isEmpty() || !ContentHash.contentHash(remote).equals(baseline);
       if (drift) {
         String kind =
             baseline.isEmpty()
                 ? "unknown baseline"
                 : digest.equals(baseline) ? "remote-only drift" : "conflict";
+        String detail =
+            "Remote version "
+                + versionNumber(current)
+                + " (baseline version "
+                + (state == null ? "unknown" : String.valueOf(state.versionNumber()))
+                + "), last edited by "
+                + versionAuthor(current)
+                + " at "
+                + versionWhen(current)
+                + ".";
         String diff =
             StorageDiff.diffStorage(redact(remote, opts), redact(storage, opts), "remote", "local");
         if (diff.isEmpty())
           diff = "Raw storage differs; display normalization hides the differences.\n";
-        diagnostic = redact("Publish stopped: " + kind + "\n" + diff, opts);
+        diagnostic = redact("Publish stopped: " + kind + "\n" + detail + "\n" + diff, opts);
       }
     }
     if (opts.dryRun) {
@@ -668,6 +823,9 @@ public final class PageSyncer {
     if (equal) {
       String id = String.valueOf(current.get("id"));
       String url = pageUrl(client.baseUrl(), current);
+      if (opts.baselineDirectory != null)
+        new MergeSnapshot(localInput, storage, versionNumber(current), snapshotContext)
+            .save(opts.baselineDirectory, client.baseUrl(), id);
       log.info("unchanged " + path + ": " + url);
       return new SyncResult(SyncAction.UNCHANGED, path, meta.space, meta.title, id, url, "");
     }
@@ -676,7 +834,9 @@ public final class PageSyncer {
       if (!opts.force) {
         if (opts.confirmOverwrite == null)
           throw new SyncException(
-              diagnostic + "Use --force to explicitly overwrite remote storage.");
+              diagnostic
+                  + "Run with --force after reviewing the diff, or re-import to refresh the"
+                  + " baseline.");
         if (!opts.confirmOverwrite.test(diagnostic)) {
           return new SyncResult(
               SyncAction.SKIPPED,
@@ -716,6 +876,18 @@ public final class PageSyncer {
       client.syncLabels(pageId, meta.labels, opts.appendLabels);
     }
 
+    if (opts.baselineDirectory != null) {
+      Map<String, Object> verified = client.getPageById(pageId);
+      if (versionNumber(verified) != versionNumber(page))
+        throw new SyncException(
+            "Published but verification version changed; snapshots not advanced");
+      new MergeSnapshot(
+              localInput,
+              String.valueOf(currentStorageValue(verified)),
+              versionNumber(verified),
+              snapshotContext)
+          .save(opts.baselineDirectory, client.baseUrl(), pageId);
+    }
     new PublishBaseline(digest, versionNumber(page))
         .save(opts.baselineDirectory, client.baseUrl(), pageId);
     String url = pageUrl(client.baseUrl(), page);
@@ -756,6 +928,30 @@ public final class PageSyncer {
       return "";
     }
     return version.get("message") instanceof String text ? text : "";
+  }
+
+  /**
+   * Display name of the version author, or a placeholder when the response omits it. Expanded
+   * {@code version} objects carry {@code by.displayName}; older or partial responses may not.
+   */
+  private static String versionAuthor(Map<String, Object> page) {
+    if (page.get("version") instanceof Map<?, ?> version
+        && version.get("by") instanceof Map<?, ?> by
+        && by.get("displayName") instanceof String name
+        && !name.isEmpty()) {
+      return name;
+    }
+    return "unknown editor";
+  }
+
+  /** Timestamp of the version, or a placeholder when the response omits it. */
+  private static String versionWhen(Map<String, Object> page) {
+    if (page.get("version") instanceof Map<?, ?> version
+        && version.get("when") instanceof String when
+        && !when.isEmpty()) {
+      return when;
+    }
+    return "unknown time";
   }
 
   private static String quoted(List<String> values) {

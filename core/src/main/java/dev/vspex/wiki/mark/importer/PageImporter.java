@@ -3,6 +3,8 @@ package dev.vspex.wiki.mark.importer;
 import dev.vspex.wiki.mark.convert.MarkdownConverter;
 import dev.vspex.wiki.mark.json.Json;
 import dev.vspex.wiki.mark.metadata.MetadataParser;
+import dev.vspex.wiki.mark.sync.ContentHash;
+import dev.vspex.wiki.mark.sync.PublishBaseline;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -77,7 +79,19 @@ public final class PageImporter {
             .toList();
     List<Warn> warnings =
         converted.warnings().stream().map(w -> new Warn(w.code(), w.message())).toList();
-    return commit(project, options, source, id, page, document, stem, markdown, assets, warnings);
+    // Lossy Markdown imports never record a publish baseline; the status line says so.
+    return commit(
+        project,
+        options,
+        source,
+        id,
+        page,
+        document,
+        stem,
+        markdown,
+        assets,
+        warnings,
+        "Publish baseline skipped: Markdown import is lossy; publish will need --force on drift");
   }
 
   private static ImportReport runLossless(
@@ -103,13 +117,92 @@ public final class PageImporter {
     String markdown =
         losslessDocument(space, parents, title, page.labels(), attachmentPaths, page.storage());
     validateLosslessMetadata(markdown, space, parents, title, page.labels(), attachmentPaths);
+    // The byte-exactness check doubles as the publish-baseline gate below, so it always runs;
+    // --verify only decides whether a mismatch fails the import.
+    var body = MetadataParser.parseDocument(markdown, new MetadataParser.ParseOptions()).body();
+    String compiled =
+        MarkdownConverter.render(body, new MarkdownConverter.RenderOptions()).storage();
+    boolean exact = compiled.equals(page.storage());
     if (options.verify()) {
-      var body = MetadataParser.parseDocument(markdown, new MetadataParser.ParseOptions()).body();
-      checkCompiled(
-          MarkdownConverter.render(body, new MarkdownConverter.RenderOptions()).storage(),
-          page.storage());
+      checkCompiled(compiled, page.storage());
     }
-    return commit(project, options, source, id, page, document, stem, markdown, assets, warnings);
+    ImportReport report =
+        commit(project, options, source, id, page, document, stem, markdown, assets, warnings, "");
+    String baselineStatus =
+        recordBaseline(project, options, source, page, space, parents, title, exact);
+    return new ImportReport(
+        report.document(),
+        report.pageId(),
+        report.version(),
+        report.markdown(),
+        report.files(),
+        report.warnings(),
+        report.assetCount(),
+        report.preview(),
+        baselineStatus);
+  }
+
+  /**
+   * Records the publish baseline for a lossless import that targets the source page, so the next
+   * publish sees no drift. Runs only after the import committed successfully; every skip path
+   * explains itself in the returned status line. The manifest stays a human-readable source record
+   * and is never read as a baseline.
+   */
+  private static String recordBaseline(
+      Path project,
+      ImportOptions options,
+      PageImportSource source,
+      PageImportSource.PageSnapshot page,
+      String space,
+      List<String> parents,
+      String title,
+      boolean exact)
+      throws IOException {
+    if (options.preview()) {
+      return "Publish baseline skipped: preview writes nothing";
+    }
+    if (options.noBaseline()) {
+      return "Publish baseline not recorded (--no-baseline)";
+    }
+    String retargeted = retargetedAspects(page, space, parents, title);
+    if (retargeted != null) {
+      return "Publish baseline skipped: import retargets "
+          + retargeted
+          + "; first publish will create or update the target page and needs normal confirmation";
+    }
+    if (!exact) {
+      return "Publish baseline skipped: file does not compile to the fetched storage;"
+          + " publish will need --force";
+    }
+    String hash = ContentHash.contentHash(page.storage());
+    new PublishBaseline(hash, page.version())
+        .save(project.resolve(".gradle/confluence-publish/baselines"), source.baseUrl(), page.id());
+    return "Publish baseline recorded: version "
+        + page.version()
+        + " (hash "
+        + hash.substring(0, 8)
+        + "...)";
+  }
+
+  /**
+   * Names the retargeted header aspects (space, title, parents) when the effective headers no
+   * longer address the source page, or null when the import targets the source page itself. A
+   * retargeted import may address a different page (titles repeat under different parents), so it
+   * must never borrow the source page's baseline.
+   */
+  private static String retargetedAspects(
+      PageImportSource.PageSnapshot page, String space, List<String> parents, String title) {
+    List<String> aspects = new ArrayList<>();
+    if (!space.equals(page.space())) {
+      aspects.add("space");
+    }
+    if (!title.equals(page.title())) {
+      aspects.add("title");
+    }
+    if (!parents.equals(page.ancestors())) {
+      aspects.add("parents");
+    }
+    return aspects.isEmpty() ? null : String.join("/", aspects);
   }
 
   private static ImportReport commit(
@@ -122,7 +215,8 @@ public final class PageImporter {
       String stem,
       String markdown,
       List<AssetRef> assets,
-      List<Warn> warnings)
+      List<Warn> warnings,
+      String baselineStatus)
       throws IOException {
     Path manifest = document.resolveSibling(stem + ".confluence.json");
     Path storage = document.resolveSibling(stem + ".confluence-storage.xml");
@@ -197,7 +291,8 @@ public final class PageImporter {
         new ArrayList<>(files.keySet()),
         warnings.stream().map(Warn::message).toList(),
         assets.size(),
-        options.preview());
+        options.preview(),
+        baselineStatus);
   }
 
   /**

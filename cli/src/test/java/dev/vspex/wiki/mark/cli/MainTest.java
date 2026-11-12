@@ -16,6 +16,16 @@ import org.junit.jupiter.api.io.TempDir;
 /** CLI tests: flags, validation, file resolution, and compile-only runs. */
 class MainTest {
 
+  @Test
+  void mergeRejectsIncompatibleModesBeforeConnection() {
+    var capture = new Capture();
+    assertEquals(1, run(capture, "--merge", "--force", "--files", "missing.md"));
+    assertTrue(capture.errText().contains("--merge cannot"));
+    capture = new Capture();
+    assertEquals(1, run(capture, "--merge", "--compile-only", "--files", "missing.md"));
+    assertTrue(capture.errText().contains("--merge cannot"));
+  }
+
   static final class Capture {
     final ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
     final ByteArrayOutputStream errBytes = new ByteArrayOutputStream();

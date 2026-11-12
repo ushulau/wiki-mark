@@ -14,7 +14,8 @@ public record ImportOptions(
     String space,
     List<String> parents,
     String title,
-    String wikiDir) {
+    String wikiDir,
+    boolean noBaseline) {
   public ImportOptions {
     parents = List.copyOf(parents);
   }
@@ -22,6 +23,6 @@ public record ImportOptions(
   /** Markdown-mode options; lossless off, no retargeting, default wiki directory. */
   public ImportOptions(
       String pageId, String pageUrl, String output, boolean overwrite, boolean preview) {
-    this(pageId, pageUrl, output, overwrite, preview, false, false, "", List.of(), "", "");
+    this(pageId, pageUrl, output, overwrite, preview, false, false, "", List.of(), "", "", false);
   }
 }

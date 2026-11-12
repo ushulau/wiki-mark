@@ -135,6 +135,12 @@ class PageSyncerTest {
     }
 
     @Override
+    public Map<String, Object> updateBody(
+        Map<String, Object> page, String body, boolean minor, String message) {
+      return updatePage(page, body, minor, message, "preserved", "");
+    }
+
+    @Override
     public Map<String, Object> updatePage(
         Map<String, Object> page,
         String content,
@@ -161,7 +167,8 @@ class PageSyncerTest {
       Map<String, Object> storage = new LinkedHashMap<>();
       storage.put("value", content);
       stored.put("body", new LinkedHashMap<>(Map.of("storage", storage)));
-      long number = (Long) ((Map<?, ?>) stored.get("version")).get("number");
+      // Production version numbers arrive as Long from JSON; accept any Number like the product.
+      long number = ((Number) ((Map<?, ?>) stored.get("version")).get("number")).longValue();
       Map<String, Object> version = new LinkedHashMap<>();
       version.put("number", number + 1);
       version.put("message", versionMessage);

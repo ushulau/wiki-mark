@@ -81,6 +81,18 @@ public interface PageStore {
       String appearance,
       String emoji);
 
+  /** Read-only attachment inventory for merge preflight. */
+  default List<Map<String, Object>> getAttachments(String pageId) {
+    throw new UnsupportedOperationException("Attachment inventory is not supported by this store");
+  }
+
+  /** Version-checked body-only update; implementations must preserve other properties. */
+  default Map<String, Object> updateBody(
+      Map<String, Object> page, String body, boolean minor, String message) {
+    throw new UnsupportedOperationException(
+        "Body-only merge update is not supported by this store");
+  }
+
   /**
    * Uploads {@code localPath} unless an identical attachment exists.
    *

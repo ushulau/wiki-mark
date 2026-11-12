@@ -25,7 +25,8 @@ final class ImportCommand {
         --overwrite               replace files in this import's output set
         --preview                 print Markdown and paths; no writes or asset downloads
         --lossless                write raw storage markup; no Markdown conversion
-        --verify                  recompile in memory and fail on any byte difference (requires --lossless)
+        --verify                  recompile in memory and fail on any byte difference
+        --no-baseline             do not record a publish baseline for this import (requires --lossless)
         --space KEY               retarget the import into another space (requires --lossless)
         --parent TITLE            retarget under another parent (repeatable, outermost first)
         --title TITLE             retarget with another title (requires --lossless)
@@ -54,7 +55,12 @@ final class ImportCommand {
   static int run(
       String[] args, PrintStream out, PrintStream err, Map<String, String> env, Path project) {
     String id = "", url = "", output = "", space = "", title = "", wikiDir = "";
-    boolean overwrite = false, preview = false, help = false, lossless = false, verify = false;
+    boolean overwrite = false,
+        preview = false,
+        help = false,
+        lossless = false,
+        verify = false,
+        noBaseline = false;
     List<String> parents = new ArrayList<>();
     List<String> connection = new ArrayList<>();
     try {
@@ -70,6 +76,7 @@ final class ImportCommand {
                 "--preview",
                 "--lossless",
                 "--verify",
+                "--no-baseline",
                 "--help",
                 "-h",
                 "--insecure-skip-tls-verify")
@@ -80,6 +87,7 @@ final class ImportCommand {
             case "--preview" -> preview = true;
             case "--lossless" -> lossless = true;
             case "--verify" -> verify = true;
+            case "--no-baseline" -> noBaseline = true;
             case "--help", "-h" -> help = true;
             default -> connection.add(name);
           }
@@ -128,10 +136,21 @@ final class ImportCommand {
           PageImporter.run(
               project,
               new ImportOptions(
-                  id, url, output, overwrite, preview, lossless, verify, space, parents, title,
-                  wikiDir),
+                  id,
+                  url,
+                  output,
+                  overwrite,
+                  preview,
+                  lossless,
+                  verify,
+                  space,
+                  parents,
+                  title,
+                  wikiDir,
+                  noBaseline),
               new ConfluenceImportSource(client));
       out.println(report.summary());
+      out.println(report.baselineStatus());
       if (preview) {
         report.files().forEach(path -> out.println("Would write: " + path));
         out.print(report.markdown());

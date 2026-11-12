@@ -61,6 +61,7 @@ public final class Main {
         --minor-edit               do not send notifications on update
         --version-message MSG      page version message
         --changes-only             retained compatibility flag; exact matches always skip
+        --merge                    merge independent body edits (preserves auxiliary resources)
         --force                    explicitly overwrite remote drift
         --ci                       do not fail when patterns match nothing
         --continue-on-error        keep processing remaining files after a failure
@@ -112,6 +113,8 @@ public final class Main {
     }
     Log log = new CliLog(out, err, config.logLevel);
     try {
+      if (config.opts.merge && (config.opts.force || config.opts.compileOnly))
+        throw new SyncException("--merge cannot be combined with --force or compile-only");
       validate(config);
       if (config.patterns.isEmpty()) {
         throw new SyncException("no files to sync (use --files)");
@@ -319,6 +322,7 @@ public final class Main {
     options.put(
         "--version-message",
         new Option(true, (config, value) -> config.opts.versionMessage = value));
+    options.put("--merge", new Option(false, (config, value) -> config.opts.merge = true));
     options.put("--force", new Option(false, (config, value) -> config.opts.force = true));
     options.put(
         "--changes-only", new Option(false, (config, value) -> config.opts.changesOnly = true));
